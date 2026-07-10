@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DND Terminal</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #app {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+            width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            text-align: center;
+            padding: 15px;
+            border-bottom: 2px solid #c9a84c;
+            margin-bottom: 20px;
+        }
+        header h1 { color: #c9a84c; font-size: 1.4em; letter-spacing: 3px; }
+        #main {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+        }
+        #left {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+        }
+        #right {
+            flex: 1;
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            min-width: 220px;
+        }
+        #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        #right p { margin: 4px 0; }
+        #right .stat { color: #a8d8ea; }
+        #right .val  { color: #e0e0e0; float: right; }
+        #screen-title {
+            color: #c9a84c;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #333;
+        }
+        #screen-body {
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+            line-height: 1.5;
+            padding: 10px;
+            background: #16213e;
+            border-radius: 6px;
+            min-height: 80px;
+        }
+        #options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        #options button {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 10px 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            cursor: pointer;
+            text-align: left;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        #options button:hover { background: #1a5276; border-color: #c9a84c; }
+        #options button:active { background: #0b2545; }
+        #log {
+            margin-top: 15px;
+            padding: 10px;
+            background: #111;
+            border-radius: 6px;
+            font-size: 0.8em;
+            color: #aaa;
+            min-height: 40px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        #log p { margin: 2px 0; }
+        #log p:first-child { color: #e0e0e0; }
+        #create-form { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
+        #create-form label { color: #a8d8ea; font-size: 0.9em; }
+        #create-form input, #create-form select {
+            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            padding: 8px 10px; font-family: 'Courier New', monospace; font-size: 0.95em;
+            border-radius: 4px; width: 100%;
+        }
+        #create-form select option { background: #16213e; }
+        #create-form button {
+            background: #c9a84c; color: #1a1a2e; border: none;
+            padding: 10px; font-size: 1em; cursor: pointer;
+            border-radius: 4px; font-family: 'Courier New', monospace; margin-top: 6px;
+        }
+        #create-form button:hover { background: #dbb95c; }
+        #info-box {
+            background: #0f3460; border: 1px solid #333; border-radius: 6px;
+            padding: 10px; margin-top: 6px; font-size: 0.85em; min-height: 40px;
+        }
+        #info-box .label { color: #a8d8ea; }
+        #info-box .value { color: #e0e0e0; float: right; }
+        #hp-bar {
+            background: #333; height: 8px; border-radius: 4px; margin: 6px 0; overflow: hidden;
+        }
+        #hp-bar div { background: #27ae60; height: 100%; transition: width 0.3s; }
+        #xp-bar {
+            background: #333; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
+        }
+        #xp-bar div { background: #a8d8ea; height: 100%; transition: width 0.3s; }
+        #buy-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); justify-content: center; align-items: center;
+        }
+        #buy-box {
+            background: #16213e; padding: 25px; border-radius: 10px;
+            border: 1px solid #c9a84c; text-align: center; min-width: 300px;
+        }
+        #buy-box h3 { color: #c9a84c; margin-bottom: 15px; }
+        #buy-box input {
+            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            padding: 8px; font-size: 1.1em; width: 80px; text-align: center;
+            border-radius: 4px; font-family: 'Courier New', monospace;
+        }
+        #buy-box button {
+            background: #c9a84c; color: #1a1a2e; border: none; padding: 8px 20px;
+            margin: 5px; font-size: 0.95em; cursor: pointer; border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        #buy-box button:hover { background: #dbb95c; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <header><h1>⚔ DUNGEONS & DRAGONS ⚔</h1></header>
+    <div id="main">
+        <div id="left">
+            <div id="screen-title"></div>
+            <div id="screen-body"></div>
+            <div id="options"></div>
+            <div id="log"></div>
+        </div>
+        <div id="right">
+            <h3>Player</h3>
+            <p><span class="stat">Name</span> <span class="val" id="p-name">-</span></p>
+            <p><span class="stat">Class</span> <span class="val" id="p-class">-</span></p>
+            <p><span class="stat">Level</span> <span class="val" id="p-level">-</span></p>
+            <p><span class="stat">HP</span> <span class="val" id="p-hp">-/-</span></p>
+            <div id="hp-bar"><div id="hp-fill"></div></div>
+            <p><span class="stat">AC</span> <span class="val" id="p-ac">-</span></p>
+            <p><span class="stat">Gold</span> <span class="val" id="p-gold">-</span></p>
+            <p><span class="stat">XP</span> <span class="val" id="p-xp">-</span></p>
+            <div id="xp-bar"><div id="xp-fill"></div></div>
+            <p><span class="stat">Weapon</span> <span class="val" id="p-weapon">-</span></p>
+            <p><span class="stat">Armor</span> <span class="val" id="p-armor">-</span></p>
+        </div>
+    </div>
+</div>
+
+<div id="buy-overlay">
+    <div id="buy-box">
+        <h3 id="buy-title">Buy</h3>
+        <p id="buy-info" style="margin-bottom:12px;color:#aaa;"></p>
+        <div><input type="number" id="buy-qty" value="1" min="1"></div>
+        <div style="margin-top:12px;">
+            <button onclick="buyConfirm()">Buy</button>
+            <button onclick="hideBuy()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentState = null;
+let buyItemName = null;
+let raceData = [];
+let classData = [];
+
+async function fetchState() {
+    const r = await fetch("/state");
+    const s = await r.json();
+    render(s);
+}
+
+async function doAction(choice) {
+    const r = await fetch("/action", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({choice})
+    });
+    const s = await r.json();
+    render(s);
+}
+
+async function doSave(name) {
+    const r = await fetch("/save", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name})
+    });
+    const s = await r.json();
+    render(s);
+}
+
+async function doCustomSave(name) {
+    const r = await fetch("/custom_save", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({name})
+    });
+    const s = await r.json();
+    render(s);
+}
+
+async function doLoadList() {
+    const r = await fetch("/load_list");
+    const s = await r.json();
+    render(s);
+}
+
+async function doStart(data) {
+    const r = await fetch("/start", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+    const s = await r.json();
+    render(s);
+}
+
+async function doShopBuy(item, qty) {
+    const r = await fetch("/shop_buy", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({item, qty})
+    });
+    const s = await r.json();
+    render(s);
+}
+
+async function showCreateForm() {
+    const r = await fetch("/create_form");
+    const d = await r.json();
+    raceData = d.races;
+    classData = d.classes;
+
+    document.getElementById("screen-title").textContent = "CREATE CHARACTER";
+    let html = '<div id="create-form">';
+    html += '<label>Name</label><input type="text" id="char-name" value="Adventurer">';
+    html += '<label>Race</label><select id="char-race" onchange="updateInfoBox()">';
+    d.races.forEach(r => html += `<option value="${r[0]}">${r[1]}</option>`);
+    html += '</select>';
+    html += '<label>Class</label><select id="char-class" onchange="updateInfoBox()">';
+    d.classes.forEach(c => html += `<option value="${c[0]}">${c[1]}</option>`);
+    html += '</select>';
+    html += '<div id="info-box"></div>';
+    html += '<button onclick="submitCreate()">Begin Adventure</button>';
+    html += '</div>';
+    document.getElementById("screen-body").innerHTML = html;
+    document.getElementById("options").innerHTML = "";
+    document.getElementById("log").innerHTML = "";
+    updateInfoBox();
+}
+
+function updateInfoBox() {
+    const raceSel = document.getElementById("char-race");
+    const classSel = document.getElementById("char-class");
+    if (!raceSel || !classSel) return;
+
+    const raceIdx = raceSel.selectedIndex;
+    const classIdx = classSel.selectedIndex;
+    const race = raceData[raceIdx];
+    const cls = classData[classIdx];
+
+    let html = '';
+    if (race && race[2]) {
+        html += `<div><span class="label">Race Bonus:</span> <span class="value">${race[2]}</span></div>`;
+    }
+    if (cls) {
+        html += `<div><span class="label">HP:</span> <span class="value">${cls[2]}</span></div>`;
+        html += `<div><span class="label">Primary:</span> <span class="value">${cls[3]}</span></div>`;
+    }
+    document.getElementById("info-box").innerHTML = html;
+}
+
+function submitCreate() {
+    const name = document.getElementById("char-name").value || "Adventurer";
+    const race = document.getElementById("char-race").value;
+    const cls = document.getElementById("char-class").value;
+    doStart({name, race, class: cls});
+}
+
+function render(s) {
+    currentState = s;
+    document.getElementById("screen-title").textContent = s.title || "";
+
+    const body = document.getElementById("screen-body");
+    // Don't overwrite the create form unless we're not in character creation
+    if (s.screen !== "character_creation") {
+        body.textContent = s.body || "";
+    }
+
+    const opts = document.getElementById("options");
+    opts.innerHTML = "";
+    s.options.forEach((opt, i) => {
+        const btn = document.createElement("button");
+        btn.textContent = `> ${opt}`;
+        btn.addEventListener("click", () => handleClick(s.screen, i));
+        opts.appendChild(btn);
+    });
+
+    // Log
+    const log = document.getElementById("log");
+    log.innerHTML = "";
+    (s.log || []).forEach(msg => {
+        const p = document.createElement("p");
+        p.textContent = msg;
+        log.appendChild(p);
+    });
+
+    // Player sidebar
+    if (s.player) {
+        const p = s.player;
+        document.getElementById("p-name").textContent = p.name;
+        document.getElementById("p-class").textContent = p.race + " " + p.class;
+        document.getElementById("p-level").textContent = p.level;
+        document.getElementById("p-hp").textContent = p.hp + "/" + p.max_hp;
+        document.getElementById("p-ac").textContent = p.ac;
+        document.getElementById("p-gold").textContent = p.gold;
+        document.getElementById("p-xp").textContent = p.xp + "/" + p.xp_to_next;
+        document.getElementById("p-weapon").textContent = p.weapon;
+        document.getElementById("p-armor").textContent = p.armor;
+
+        const hpPct = p.max_hp > 0 ? (p.hp / p.max_hp * 100) : 0;
+        document.getElementById("hp-fill").style.width = hpPct + "%";
+        const xpPct = p.xp_to_next > 0 ? (p.xp / p.xp_to_next * 100) : 0;
+        document.getElementById("xp-fill").style.width = xpPct + "%";
+    }
+}
+
+function handleClick(screen, index) {
+    if (screen === "main_menu") {
+        if (index === 0) showCreateForm();
+        else if (index === 1) doLoadList();
+    }
+    else if (screen === "load_menu") {
+        if (index === currentState.options.length - 1) fetchState();
+        else doAction(index);
+    }
+    else if (screen === "town") {
+        doAction(index);
+    }
+    else if (screen === "save_menu") {
+        if (index === 0) {
+            const name = currentState.options[0].replace("Save as '", "").replace("'", "");
+            doSave(name);
+        } else if (index === 1) {
+            const name = prompt("Enter save name:");
+            if (name) doCustomSave(name);
+        } else {
+            doAction(4);
+        }
+    }
+    else if (screen === "combat" || screen === "combat_item") {
+        doAction(index);
+    }
+    else if (screen === "game_over") {
+        fetchState();
+    }
+    else if (screen === "stat_boost") {
+        doAction(index);
+    }
+    else if (screen === "shop_select") {
+        doAction(index);
+    }
+    else if (screen === "shop") {
+        if (index === currentState.options.length - 1) {
+            doAction(index);
+        } else {
+            showBuy(index);
+        }
+    }
+    else if (screen === "inventory") {
+        doAction(index);
+    }
+}
+
+function showBuy(index) {
+    buyItemName = currentState.shop_items[index];
+    const price = currentState.shop_prices[index];
+    document.getElementById("buy-title").textContent = buyItemName;
+    document.getElementById("buy-info").textContent = price + " gold each";
+    document.getElementById("buy-qty").value = 1;
+    document.getElementById("buy-overlay").style.display = "flex";
+}
+
+function buyConfirm() {
+    const qty = parseInt(document.getElementById("buy-qty").value) || 1;
+    if (qty < 1) return;
+    doShopBuy(buyItemName, qty);
+    hideBuy();
+}
+
+function hideBuy() {
+    document.getElementById("buy-overlay").style.display = "none";
+}
+
+fetchState();
+</script>
+</body>
+</html>
