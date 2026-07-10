@@ -220,11 +220,8 @@ async function doSave(name) {
     render(s);
 }
 
-async function doCustomSave(name) {
-    const r = await fetch("/custom_save", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name})
-    });
+async function doForceSave() {
+    const r = await fetch("/force_save", { method: "POST" });
     const s = await r.json();
     render(s);
 }
@@ -369,11 +366,15 @@ function handleClick(screen, index) {
         if (index === 0) {
             const name = currentState.options[0].replace("Save as '", "").replace("'", "");
             doSave(name);
-        } else if (index === 1) {
-            const name = prompt("Enter save name:");
-            if (name) doCustomSave(name);
         } else {
-            doAction(4);
+            doAction(1);
+        }
+    }
+    else if (screen === "confirm_overwrite") {
+        if (index === 0) {
+            doForceSave();
+        } else {
+            fetchState();
         }
     }
     else if (screen === "combat" || screen === "combat_item") {

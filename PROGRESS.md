@@ -160,6 +160,31 @@ DND_project/
   * Assigns starting gear (weapon + armor + 3 Healing Potions)
   * Returns fully built Player object
 
+## Custom Save Problem (SOLVED)
+
+### What was broken
+- Custom save (`/custom_save` endpoint + prompt dialog in browser) was unreliable:
+  - `/custom_save` lacked a `None`-check for `gs["player"]`, so Flask debug reloads caused silent 500 errors
+  - `save_menu` options included "Enter custom name" with a browser `prompt()` dialog that could be blocked or cancelled
+  - No error handling on client fetch calls (errors swallowed silently)
+  - `gs["screen"]` was never updated to `"save_menu"`, causing server/client state desync
+  - The `/action` handler had no `"save_menu"` case (fell through to `get_state()`)
+
+### What i did
+1. **Removed custom save entirely** — deleted `/custom_save` route and `doCustomSave()` JS function
+2. **Simplified save menu** — options are now just `["Save as '{name}'", "(Back)"]` using the character's bare name (no `_LvX` suffix)
+3. **Added duplicate save detection** — new `save_exists(name)` in `save_load.py` checks `saves/{name}.json` before overwriting
+4. **Overwrite confirmation** — in browser, `/save` returns `"confirm_overwrite"` screen with Yes/No; in terminal, prompts `"Overwrite? (y/n)"`
+5. **New `/force_save` endpoint** — called after user confirms overwrite; stores pending name in `gs["pending_save_name"]`
+6. **Server state tracking** — `gs["screen"]` now properly set to `"save_menu"`, `handle_action()` handles both `"save_menu"` and `"confirm_overwrite"` screens
+7. **Load list format** — changed from `"{save_name:<20} {name} {class} Lv.{level}"` to `"{name} {race} {class} Lv.{level}"` (shows human-readable info, not filenames)
+
+### Files changed
+- `save_load.py` — added `save_exists()`
+- `game_server.py` — import `save_exists`, new `gs` keys, simplified save default, overwrite check in `/save`, new `/force_save`, confirm_overwrite action handler, load list format
+- `templates/index.html` — removed `doCustomSave`, added `doForceSave`, `confirm_overwrite` case in `handleClick`
+- `main.py` — import `save_exists`, simplified save default, overwrite prompt before saving, load list format
+
 ## To Do
 - Maps (towns and dungeons to explore)
 - Dungeon floors (multi-floor dungeons with bosses on final floor)

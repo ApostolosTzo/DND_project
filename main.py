@@ -4,7 +4,7 @@ from inventory import open_inventory
 from shop import open_shop, SHOP_NPCS
 from enemy import generate_enemy
 from combat import start_combat
-from save_load import save_game, load_game, list_saves
+from save_load import save_game, load_game, list_saves, save_exists
 
 def game_loop(player):
     while True:
@@ -23,10 +23,17 @@ def game_loop(player):
                 press_any_key()
                 break
         elif temp == 3:
-            default_name = player.current_save or f"{player.name}_Lv{player.level}"
+            default_name = player.current_save or player.name
             save_name = prompt(f"Save name (default: {default_name})")
             if not save_name:
                 save_name = default_name
+            if save_exists(save_name):
+                confirm = prompt(f"Save '{save_name}' already exists. Overwrite? (y/n)")
+                if confirm.lower() != "y":
+                    clear_screen()
+                    show("Save cancelled.")
+                    press_any_key()
+                    continue
             save_game(player, save_name)
             player.current_save = save_name
             clear_screen()
@@ -56,7 +63,7 @@ def main():
                 show("No save files found.")
                 press_any_key()
             else:
-                save_options = [f"{s[0]:<20} {s[1]} {s[3]} Lv.{s[4]}" for s in saves]
+                save_options = [f"{s[1]} {s[2]} {s[3]} Lv.{s[4]}" for s in saves]
                 save_options.append("(Back)")
                 idx = menu("Load Game", save_options)
                 if idx < len(saves):

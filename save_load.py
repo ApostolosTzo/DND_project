@@ -70,6 +70,10 @@ def load_game(save_name):
         player.add_item(create_item(item_name))
     return player
 
+def save_exists(save_name):
+    _ensure_dir()
+    return os.path.exists(_filename(save_name))
+
 # list_saves lists all available save files in the SAVES_DIR directory.
 # It returns a list of tuples containing the save name, player
 def list_saves():

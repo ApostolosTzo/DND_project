@@ -3,7 +3,7 @@ from player import Player, create_character, make_character, STAT_ORDER, CLASSES
 from items import ITEMS, create_item
 from enemy import generate_enemy
 from dice import roll
-from save_load import save_game, load_game, list_saves
+from save_load import save_game, load_game, list_saves, save_exists
 
 app = Flask(__name__)
 
@@ -13,6 +13,7 @@ gs = {
     "screen": "main_menu",
     "log": [],
     "pending_stat_boost": None,
+    "pending_save_name": None,
 }
 
 def player_json(p):
@@ -97,6 +98,17 @@ def handle_action():
         return inventory_action(choice)
     elif gs["screen"] == "stat_boost":
         return stat_boost_action(choice)
+    elif gs["screen"] == "save_menu":
+        gs["screen"] = "town"
+        gs["log"] = []
+        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    elif gs["screen"] == "confirm_overwrite":
+        if choice == 0:
+            return force_save()
+        gs["screen"] = "town"
+        gs["pending_save_name"] = None
+        gs["log"] = []
+        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "load_menu":
         return load_action(choice)
     elif gs["screen"] == "game_over":
@@ -114,11 +126,29 @@ def do_save():
     if not p:
         return get_state()
     data = request.json
-    name = data.get("name", f"{p.name}_Lv{p.level}")
+    name = data.get("name", p.name)
+    if save_exists(name):
+        gs["screen"] = "confirm_overwrite"
+        gs["pending_save_name"] = name
+        gs["log"] = [f"Save '{name}' already exists. Overwrite?"]
+        return respond("confirm_overwrite", "Overwrite Save?", f"Save '{name}' already exists. Overwrite?", ["Yes", "No"])
     save_game(p, name)
     p.current_save = name
     gs["log"] = [f"Game saved as '{name}'!"]
     return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+
+@app.route("/force_save", methods=["POST"])
+def force_save():
+    p = gs["player"]
+    if not p or not gs["pending_save_name"]:
+        return get_state()
+    name = gs["pending_save_name"]
+    gs["pending_save_name"] = None
+    save_game(p, name)
+    p.current_save = name
+    gs["screen"] = "town"
+    gs["log"] = [f"Game saved as '{name}'!"]
+    return respond("town", "Saved!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
 # ---- Town ----
 def town_action(choice):
@@ -144,8 +174,9 @@ def town_action(choice):
         return inventory_state()
 
     elif choice == 3:  # Save
-        default = p.current_save or f"{p.name}_Lv{p.level}"
-        return respond("save_menu", "Save Game", "", [f"Save as '{default}'", "Enter custom name", "(Back)"])
+        gs["screen"] = "save_menu"
+        default = p.current_save or p.name
+        return respond("save_menu", "Save Game", "", [f"Save as '{default}'", "(Back)"])
 
     elif choice == 4:  # Quit
         gs["player"] = None
@@ -457,7 +488,7 @@ def load_list():
     gs["screen"] = "load_menu"
     if not saves:
         return respond("main_menu", "No saves found", "", ["New Game", "Load Game", "Quit"])
-    options = [f"{s[0]:<20} {s[1]} {s[3]} Lv.{s[4]}" for s in saves]
+    options = [f"{s[1]} {s[2]} {s[3]} Lv.{s[4]}" for s in saves]
     return respond("load_menu", "Load Game", "", options + ["(Back)"])
 
 def load_action(choice):
@@ -475,17 +506,6 @@ def load_action(choice):
     gs["screen"] = "town"
     gs["log"] = [f"Loaded '{name}'!"]
     return respond("town", "Game Loaded!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
-
-# ---- Custom Save ----
-@app.route("/custom_save", methods=["POST"])
-def custom_save():
-    p = gs["player"]
-    data = request.json
-    name = data.get("name", f"{p.name}_Lv{p.level}")
-    save_game(p, name)
-    p.current_save = name
-    gs["log"] = [f"Game saved as '{name}'!"]
-    return respond("town", "Saved!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
 if __name__ == "__main__":
     app.run(debug=True)

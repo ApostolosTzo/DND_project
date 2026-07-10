@@ -1,0 +1,29 @@
+{
+  "name": "Adventurer",
+  "race": "Human",
+  "class_name": "Fighter",
+  "level": 1,
+  "xp": 0,
+  "gold": 0,
+  "stats": {
+    "STR": 14,
+    "DEX": 11,
+    "CON": 12,
+    "INT": 15,
+    "WIS": 10,
+    "CHA": 14
+  },
+  "hp": 11,
+  "max_hp": 11,
+  "weapon": "Longsword",
+  "armor": "Chainmail",
+  "shield": null,
+  "inventory": [
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion"
+  ]
+}
