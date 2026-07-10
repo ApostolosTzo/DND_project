@@ -161,8 +161,13 @@ DND_project/
   * Returns fully built Player object
 
 ## To Do
+- Maps (towns and dungeons to explore)
+- Dungeon floors (multi-floor dungeons with bosses on final floor)
+- Quest system (quest lines with objectives and rewards)
+- Crafting system (craft items using enemy drops)
+- More items (scrolls, rings, materials, etc.)
+- More races and classes
+- Skills in combat (special abilities and actions)
+- More potions (variety of consumables)
 - Sell back items to shop
-- Maps / rooms / exploration
-- NPC interactions / quests
-- More items (scrolls, rings, etc.)
 - Difficulty scaling options ==> idk cause the game is scaling

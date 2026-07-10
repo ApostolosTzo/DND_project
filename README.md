@@ -6,15 +6,26 @@ A work-in-progress Dungeons & Dragons-style RPG that runs in the terminal (Pytho
 
 This project is **under active development**. Expect frequent changes, incomplete features, and rough edges.
 
-## Features
+## Current Features
 
 - **Character creation** — choose race (Human/Elf/Dwarf/Halfling) and class (Fighter/Rogue/Wizard/Cleric), stats rolled via 4d6-drop-lowest
 - **Turn-based combat** — attack, use items, or flee against level-scaled enemies
 - **7 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost (levels 1–100)
 - **Leveling system** — XP-based leveling with stat boosts every 4 levels
 - **Equipment** — weapons and armor with AC calculation (light/medium/heavy)
-- **4 NPC shops** — buy potions, weapons, armor with level-locked inventory
+- **NPC shops** — buy items with gold
 - **Save/Load** — multi-save JSON system
+
+## Planned Features
+
+- **Maps** — towns and dungeons to explore
+- **Dungeon floors** — each dungeon has multiple floors with enemies, final floor has a boss
+- **Quest system** — quest lines with objectives and rewards
+- **Crafting system** — craft items using drops from enemies
+- **More items** — expanded weapons, armors, potions, and materials
+- **More races & classes** — additional character options
+- **Skills in combat** — special abilities and skill actions
+- **More potions** — variety of consumables beyond healing
 
 ## How to Run
 
