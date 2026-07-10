@@ -13,13 +13,17 @@ This project is **under active development**. Expect frequent changes, incomplet
 - **7 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost (levels 1–100)
 - **Leveling system** — XP-based leveling with stat boosts every 4 levels
 - **Equipment** — weapons and armor with AC calculation (light/medium/heavy)
-- **NPC shops** — buy items with gold
-- **Save/Load** — multi-save JSON system
+- **NPC shops** — 5 shops: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard
+- **30+ items** — weapons, armors, shields, potions, scrolls, magical items
+- **Item stat bonuses** — equipment can boost STR, DEX, CON, INT, etc., affecting damage, AC, and HP
+- **Save/Load** — multi-save JSON system with overwrite protection
+- **World map** — visual SVG map showing town, villages, and dungeon connections (browser version)
 
 ## Planned Features
 
-- **Maps** — towns and dungeons to explore
 - **Dungeon floors** — each dungeon has multiple floors with enemies, final floor has a boss
+- **Interactive map locations** — clickable towns, villages, and dungeons
+- **Quest system** — quest lines with objectives and rewards
 - **Quest system** — quest lines with objectives and rewards
 - **Crafting system** — craft items using drops from enemies
 - **More items** — expanded weapons, armors, potions, and materials

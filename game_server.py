@@ -32,6 +32,9 @@ def player_json(p):
         "xp_to_next": p.xp_to_next(),
         "weapon": p.weapon.name if p.weapon else "None",
         "armor": p.armor.name if p.armor else "None",
+        "stats": p.stats,
+        "effective_stats": p.effective_stats(),
+        "stat_bonuses": p.get_equipment_stat_bonus(),
     }
 
 def respond(screen, title, body, options, extra=None):
@@ -255,6 +258,13 @@ def combat_item_action(choice):
         p.hp = min(p.hp + heal, p.max_hp)
         p.remove_item(item)
         gs["log"] = [f"Drank Healing Potion! Restored {heal} HP."]
+    elif item.name == "Greater Healing Potion":
+        heal = 20
+        p.hp = min(p.hp + heal, p.max_hp)
+        p.remove_item(item)
+        gs["log"] = [f"Drank Greater Healing Potion! Restored {heal} HP."]
+    else:
+        gs["log"] = [f"Cannot use {item.name} in combat yet."]
 
         result2 = web_enemy_attack(p, e)
         gs["log"].append(result2)
@@ -459,6 +469,8 @@ def inventory_action(choice):
             p.inventory.append(p.weapon)
         p.weapon = item
         p.remove_item(item)
+        p.ac = p.calc_ac()
+        p.recalc_hp()
         gs["log"] = [f"Equipped {item.name}!"]
     elif item.category == "armor":
         if item.armor_type == "shield":
@@ -471,6 +483,7 @@ def inventory_action(choice):
             p.armor = item
         p.remove_item(item)
         p.ac = p.calc_ac()
+        p.recalc_hp()
         gs["log"] = [f"Equipped {item.name}!"]
     elif item.category == "item":
         if item.name == "Healing Potion":
@@ -478,6 +491,13 @@ def inventory_action(choice):
             p.hp = min(p.hp + heal, p.max_hp)
             p.remove_item(item)
             gs["log"] = [f"Drank Healing Potion! Restored {heal} HP."]
+        elif item.name == "Greater Healing Potion":
+            heal = 20
+            p.hp = min(p.hp + heal, p.max_hp)
+            p.remove_item(item)
+            gs["log"] = [f"Drank Greater Healing Potion! Restored {heal} HP."]
+        else:
+            gs["log"] = [f"Cannot use {item.name} yet."]
 
     return inventory_state()
 

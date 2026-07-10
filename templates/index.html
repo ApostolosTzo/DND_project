@@ -100,6 +100,18 @@
         }
         #log p { margin: 2px 0; }
         #log p:first-child { color: #e0e0e0; }
+        #map-container {
+            margin-top: 15px;
+            background: #16213e;
+            border-radius: 6px;
+            padding: 8px;
+            width: 100%;
+        }
+        #map-container svg {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
         #create-form { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
         #create-form label { color: #a8d8ea; font-size: 0.9em; }
         #create-form input, #create-form select {
@@ -159,6 +171,23 @@
             <div id="screen-body"></div>
             <div id="options"></div>
             <div id="log"></div>
+            <div id="map-container">
+                <svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="520" height="360" fill="#16213e" rx="4"/>
+                    <line x1="80" y1="180" x2="380" y2="180" stroke="#555" stroke-width="2"/>
+                    <line x1="380" y1="180" x2="380" y2="50" stroke="#555" stroke-width="2"/>
+                    <line x1="380" y1="180" x2="380" y2="310" stroke="#555" stroke-width="2"/>
+                    <line x1="380" y1="310" x2="470" y2="310" stroke="#555" stroke-width="2"/>
+                    <circle cx="80" cy="180" r="10" fill="#c9a84c" stroke="#dbb95c" stroke-width="2"/>
+                    <circle cx="380" cy="50" r="7" fill="#5dade2" stroke="#85c1e9" stroke-width="1.5"/>
+                    <circle cx="380" cy="310" r="7" fill="#5dade2" stroke="#85c1e9" stroke-width="1.5"/>
+                    <circle cx="470" cy="310" r="7" fill="#c0392b" stroke="#e74c3c" stroke-width="1.5"/>
+                    <text x="80" y="158" text-anchor="middle" fill="#c9a84c" font-family="'Courier New',monospace" font-size="13" font-weight="bold">Town</text>
+                    <text x="380" y="36" text-anchor="middle" fill="#85c1e9" font-family="'Courier New',monospace" font-size="11">Village 2</text>
+                    <text x="380" y="340" text-anchor="middle" fill="#85c1e9" font-family="'Courier New',monospace" font-size="11">Village 1</text>
+                    <text x="470" y="340" text-anchor="middle" fill="#e74c3c" font-family="'Courier New',monospace" font-size="11">Dungeon</text>
+                </svg>
+            </div>
         </div>
         <div id="right">
             <h3>Player</h3>

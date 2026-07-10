@@ -185,8 +185,71 @@ DND_project/
 - `templates/index.html` — removed `doCustomSave`, added `doForceSave`, `confirm_overwrite` case in `handleClick`
 - `main.py` — import `save_exists`, simplified save default, overwrite prompt before saving, load list format
 
+## World Map (Visual Only)
+
+### What was added
+- A static SVG world map displayed below the log section in the browser UI
+- Shows 4 locations as connected nodes:
+  - **Town** (gold dot, center-left) — connects to Village 1 and Village 2
+  - **Village 2** (teal dot, top-right) — connected from Town
+  - **Village 1** (teal dot, bottom-right) — connected from Town
+  - **Dungeon** (red dot, far-right) — connected from Village 1
+- Connecting lines styled as muted paths (road-like appearance)
+- Labels centered above each dot with matching colors
+- Map is purely visual — no interaction or navigation yet
+- Dark background matching the game's theme
+
+### Files changed
+- `templates/index.html` — added `#map-container` CSS + SVG element after `#log`
+
+### Next
+- Make locations clickable → transition to location screen
+- Implement town/village/dungeon screens and gameplay
+
+## Items & Shops Expanded + Stat Bonuses
+
+### What was added
+- **`stats_bonus` field** on all item classes (Weapon, Armor, Item) — items can now grant stat bonuses when equipped (e.g. Arcane Staff gives +1 INT, Dragon Scale gives +1 CON, Wizard Robe gives +1 INT, Arcane Ring gives +1 INT)
+- **`effective_stats()`** on Player — combines base stats with equipment stat bonuses
+- **`get_equipment_stat_bonus()`** on Player — sums all stats_bonus from equipped weapon, armor, and shield
+- **`modifier()`** now uses `effective_stats()` — stat bonuses from equipment automatically affect:
+  - Attack rolls and damage (STR/DEX from weapons)
+  - Armor class (DEX from armor)
+  - Max HP (CON from equipment via `recalc_hp()`)
+- **`recalc_hp()`** on Player — recalculates max HP when CON changes from equipment (also called on equip)
+
+### New items (16 new weapons, 10 new armors, 6 new items)
+
+**Weapons added:** Greatsword, Battle Axe, War Hammer, Flail, Spear, Rapier, Quarterstaff, Longbow, Crossbow, Hand Crossbow, Arcane Staff, Wand
+
+**Armors added:** Studded Leather, Hide, Scale Mail, Breastplate, Half Plate, Ring Mail, Splint, Wizard Robe (with +1 INT)
+
+**Items added:** Greater Healing Potion (heals 20), Mana Potion, Antidote, Scroll of Fireball, Scroll of Healing, Arcane Ring (with +1 INT)
+
+### New shops
+- **Archer** — sells Shortbow, Longbow, Crossbow, Hand Crossbow
+- **Wizard** — sells Magic Staff, Wand, Arcane Staff (+1 INT), Wizard Robe (+1 INT), Arcane Ring (+1 INT), Lampada
+- Existing shops expanded with new items at level-appropriate prices
+
+### How stat bonuses work (example)
+If a Fighter equips an **Arcane Staff** (+1 INT):
+- `effective_stats()["INT"]` = base INT + 1
+- `modifier("INT")` = (effective_INT - 10) // 2  (one higher than before)
+- Does NOT affect Fighter's damage (which uses STR), but would affect Wizard's spell attacks in the future
+
+If a player equips **Dragon Scale** (+1 CON):
+- `modifier("CON")` increases by 1
+- `recalc_hp()` adds +1 max HP per level
+
+### Files changed
+- `items.py` — all classes get `stats_bonus` param; 32 new items added; `create_item()` copies `stats_bonus`
+- `shop.py` — Archer + Wizard shops added; all shops expanded with new items
+- `player.py` — `effective_stats()`, `get_equipment_stat_bonus()`, `recalc_hp()` added; `modifier()` uses effective stats; `equip_weapon()`/`equip_armor()` call `recalc_hp()`
+- `game_server.py` — `player_json()` returns `stats`, `effective_stats`, `stat_bonuses`; `inventory_action()`/`combat_item_action()` handle Greater Healing Potion and other items; calls `recalc_hp()` on equip
+- `inventory.py` (terminal) — handles Greater Healing Potion; calls `recalc_hp()` and `calc_ac()` on equip
+
 ## To Do
-- Maps (towns and dungeons to explore)
+- Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Quest system (quest lines with objectives and rewards)
 - Crafting system (craft items using enemy drops)

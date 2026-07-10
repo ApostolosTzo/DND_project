@@ -51,8 +51,22 @@ class Player:
         self.current_save = None
         self.ac = self.calc_ac()
 
+    def get_equipment_stat_bonus(self):
+        bonus = {}
+        for item in [self.weapon, self.armor, self.shield]:
+            if item:
+                for stat, val in item.stats_bonus.items():
+                    bonus[stat] = bonus.get(stat, 0) + val
+        return bonus
+
+    def effective_stats(self):
+        stats = dict(self.stats)
+        for stat, val in self.get_equipment_stat_bonus().items():
+            stats[stat] = stats.get(stat, 0) + val
+        return stats
+
     def modifier(self, stat: str) -> int:
-        return (self.stats[stat] - 10) // 2
+        return (self.effective_stats()[stat] - 10) // 2
     
     #===========================
     # Inventory and Equipment Management
@@ -77,12 +91,23 @@ class Player:
     # Inventory Management
     #===========================
 
+    def recalc_hp(self):
+        total = CLASSES[self.class_name]["hp"]
+        for lvl in range(2, self.level + 1):
+            total += self.hp_per_level()
+        total += self.modifier("CON") * self.level
+        self.max_hp = total
+        if self.hp > self.max_hp:
+            self.hp = self.max_hp
+
     def equip_weapon(self, weapon):
         self.weapon = weapon
+        self.recalc_hp()
 
     def equip_armor(self, armor):
         self.armor = armor
         self.ac = self.calc_ac()
+        self.recalc_hp()
 
     def add_item(self, item):
         self.inventory.append(item)

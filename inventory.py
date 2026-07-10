@@ -68,6 +68,8 @@ def do_action(player, item):
             player.inventory.append(player.weapon)
         player.weapon = item
         player.remove_item(item)
+        player.ac = player.calc_ac()
+        player.recalc_hp()
         clear_screen()
         show(f"Equipped {item.name}!")
         press_any_key()
@@ -83,6 +85,7 @@ def do_action(player, item):
             player.armor = item
         player.remove_item(item)
         player.ac = player.calc_ac()
+        player.recalc_hp()
         clear_screen()
         show(f"Equipped {item.name}!")
         press_any_key()
@@ -94,4 +97,15 @@ def do_action(player, item):
             player.remove_item(item)
             clear_screen()
             show(f"Drank Healing Potion! Restored {heal} HP.")
+            press_any_key()
+        elif item.name == "Greater Healing Potion":
+            heal = 20
+            player.hp = min(player.hp + heal, player.max_hp)
+            player.remove_item(item)
+            clear_screen()
+            show(f"Drank Greater Healing Potion! Restored {heal} HP.")
+            press_any_key()
+        else:
+            clear_screen()
+            show(f"Cannot use {item.name} yet.")
             press_any_key()
