@@ -41,12 +41,12 @@ class Player:
         self.level = 1
         self.xp = 0
         self.stats = stats
-        self.max_hp = CLASSES[class_name]["hp"] + self.modifier("CON")
-        self.hp = self.max_hp
-        self.inventory = []
         self.weapon = None
         self.armor = None
         self.shield = None
+        self.max_hp = CLASSES[class_name]["hp"] + self.modifier("CON")
+        self.hp = self.max_hp
+        self.inventory = []
         self.gold = 0
         self.current_save = None
         self.ac = self.calc_ac()

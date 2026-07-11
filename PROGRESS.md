@@ -248,6 +248,35 @@ If a player equips **Dragon Scale** (+1 CON):
 - `game_server.py` — `player_json()` returns `stats`, `effective_stats`, `stat_bonuses`; `inventory_action()`/`combat_item_action()` handle Greater Healing Potion and other items; calls `recalc_hp()` on equip
 - `inventory.py` (terminal) — handles Greater Healing Potion; calls `recalc_hp()` and `calc_ac()` on equip
 
+## `__init__` Order Bug (Fixed)
+
+### The error
+```
+File "...\DND_project\player.py", line 64, in effective_stats
+    for stat, val in self.get_equipment_stat_bonus().items():
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "...\DND_project\player.py", line 56, in get_equipment_stat_bonus
+    for item in [self.weapon, self.armor, self.shield]
+                 ^^^^^^^^^^^
+
+
+AttributeError: 'Player' object has no attribute 'weapon'
+```
+Raised from `get_equipment_stat_bonus()` at line 56 in `player.py`.
+
+### Why it happened
+When `modifier()` was changed to use `effective_stats()` → `get_equipment_stat_bonus()`, the latter iterates `[self.weapon, self.armor, self.shield]`. But in `Player.__init__`, those attributes were assigned **after** `self.max_hp = ... + self.modifier("CON")` and `self.ac = self.calc_ac()`. So the first call to `modifier()` (for HP calculation) tried to access `self.weapon` before it existed:
+
+```
+self.stats = stats                          # line 43
+self.max_hp = ... + self.modifier("CON")    # line 44 ← calls effective_stats → get_equipment_stat_bonus → needs self.weapon
+...
+self.weapon = None                          # line 47 ← assigned too late
+```
+
+### The fix
+Moved `self.weapon`, `self.armor`, and `self.shield` assignment to right after `self.stats`, before `max_hp` and `ac` are calculated. Now all attributes exist before any method that reads them is called.
+
 ## To Do
 - Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Dungeon floors (multi-floor dungeons with bosses on final floor)
