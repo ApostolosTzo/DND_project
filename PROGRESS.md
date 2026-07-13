@@ -314,6 +314,43 @@ Moved `self.weapon`, `self.armor`, and `self.shield` assignment to right after `
 - `game_server.py` — import `LOCATIONS`, `gs["current_location"]`, `/map_data`, `/travel` endpoints, `respond()` includes `current_location` and auto-sets it for town screen, action handlers for `location`/`dungeon` screens
 - `templates/index.html` — replaced static SVG with JS `drawMap()` function, added `travel()`, `loadMapData()`, `mapLocations` global, `drawMap()` call at end of `render()`, startup calls `loadMapData()` + `fetchState()`, handleClick cases for `location`/`dungeon` screens
 
+## Shop NPC Selection Bug Chain (Fixed)
+
+### Problem 1: NPC menu appeared twice
+When clicking "Visit Shop" in town, the NPC selection menu appeared → user picks an NPC → NPC menu appears again → user picks again → finally enters the shop.
+
+**Root cause**: In `town_action(1)`, the server set `gs["screen"] = "shop"` (line 199), but the response sent `screen="shop_select"`. When the user clicked an NPC, `handle_action()` checked `gs["screen"]` — it was still `"shop"`, so it routed to `shop_action()` (returns NPC list) instead of `shop_select_action()` (enters the shop).
+
+**Fix 1**: Changed `gs["screen"] = "shop"` → `gs["screen"] = "shop_select"` on line 199.
+
+### Problem 2: Village 2 skipped the NPC list
+After Fix 1, Village 2 (only Potion Merchant) went directly into the shop when clicking "Visit Shop" — no NPC list shown. The user wanted to see the NPC list first everywhere.
+
+**Root cause**: A shortcut in `shop_state()` that checked `if len(shop_names) == 1` and skipped the selection menu.
+
+**Fix 2**: Removed the single-shop shortcut from `shop_state()`. All locations now show the NPC list before entering a shop.
+
+### Problem 3: Village 1 opened wrong shop on Back
+After Fixes 1 + 2, Village 1 worked normally. But entering Potion Merchant and pressing Back opened the Weaponsmith's shop instead of the NPC list.
+
+**Root cause**: `respond()` never synced `gs["screen"]` with the response. When `show_shop()` returned `respond("shop", ...)`, the server's `gs["screen"]` remained as whatever it was before (`"shop_select"`). Pressing Back sent an action to the server, which checked `gs["screen"]` — still `"shop_select"` — so it routed to `shop_select_action()` instead of `shop_action()`. The Back index happened to be a valid NPC index in the location's shop list, so it opened that NPC's shop instead of going back.
+
+This was a **systemic state-desync bug**: every response sent a `screen` value to the client, but the server never updated its own `gs["screen"]` to match.
+
+### Final fix: `gs["screen"]` sync in `respond()`
+Added one line at the top of `respond()`:
+```python
+gs["screen"] = screen
+```
+
+Now every response automatically syncs the server's internal screen state with what the client receives. This permanently prevents any future state-desync bugs between server and client.
+
+### Files changed (final)
+- `game_server.py` — line 199: `"shop"` → `"shop_select"`; removed single-shop shortcut from `shop_state()`; added `gs["screen"] = screen` inside `respond()`
+
+### Lesson
+The root cause of all three bugs was the same: **server-side `gs["screen"]` was not kept in sync with the response screen**. The final fix (syncing inside `respond()`) eliminates the entire class of bugs at the source rather than patching each symptom individually.
+
 ## To Do
 ### Location-specific shops
 - Each location now has a `shops` list in `world_map.py`

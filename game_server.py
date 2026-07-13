@@ -48,6 +48,7 @@ def town_name():
     return loc["name"] if loc else "Town"
 
 def respond(screen, title, body, options, extra=None):
+    gs["screen"] = screen
     out = {
         "screen": screen,
         "title": title,
@@ -196,7 +197,7 @@ def town_action(choice):
         return combat_state()
 
     elif choice == 1:  # Shop
-        gs["screen"] = "shop"
+        gs["screen"] = "shop_select"
         gs["log"] = []
         return shop_state()
 
@@ -449,7 +450,9 @@ def shop_action(choice):
     # Called when user selects an item or Back inside a specific shop
     # choice is the index of the option selected
     # Last option is always "(Back)"
-    shop_names = list(SHOP_NPCS.keys())
+    loc_id = gs["current_location"]
+    loc = LOCATIONS.get(loc_id, {})
+    shop_names = loc.get("shops", list(SHOP_NPCS.keys()))
     gs["screen"] = "shop_select"
     return respond("shop_select", "Which shop?", "", shop_names + ["(Back)"])
 
