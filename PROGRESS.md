@@ -223,6 +223,13 @@ DND_project/
 **Weapons added:** Greatsword, Battle Axe, War Hammer, Flail, Spear, Rapier, Quarterstaff, Longbow, Crossbow, Hand Crossbow, Arcane Staff, Wand
 
 **Armors added:** Studded Leather, Hide, Scale Mail, Breastplate, Half Plate, Ring Mail, Splint, Wizard Robe (with +1 INT)
+```
+Light armor:  AC = base_armor + DEX mod
+Medium armor: AC = base_armor + min(DEX mod, 2)
+Heavy armor:  AC = base_armor (no DEX)
+No armor:     AC = 10 + DEX mod
+Shield:       AC += 2
+```
 
 **Items added:** Greater Healing Potion (heals 20), Mana Potion, Antidote, Scroll of Fireball, Scroll of Healing, Arcane Ring (with +1 INT)
 
@@ -308,8 +315,22 @@ Moved `self.weapon`, `self.armor`, and `self.shield` assignment to right after `
 - `templates/index.html` — replaced static SVG with JS `drawMap()` function, added `travel()`, `loadMapData()`, `mapLocations` global, `drawMap()` call at end of `render()`, startup calls `loadMapData()` + `fetchState()`, handleClick cases for `location`/`dungeon` screens
 
 ## To Do
+### Location-specific shops
+- Each location now has a `shops` list in `world_map.py`
+- **Town**: all 5 NPCs (Potion Merchant, Weaponsmith, Armorer, Archer, Wizard)
+- **Village 2**: Potion Merchant only
+- **Village 1**: Weaponsmith and Armorer
+- **Dungeon**: no shops
+- Villages now use the town screen (fight/shop/inventory/save) instead of a generic "location" screen — only the available shops change per location
+- Screen title dynamically shows the location name via `town_name()` helper function
+- `shop_state()` and `shop_select_action()` filter shop names by `LOCATIONS[current_location].shops`
+- Terminal version (main.py) unaffected — no map/location system there
+
+### Files changed
+- `world_map.py` — added `shops` list to each location
+- `game_server.py` — `shop_state()`/`shop_select_action()` filter by current location's shops, `/travel` uses town screen for villages, added `town_name()` helper, removed auto-location-set from `respond()`, explicit `current_location` in `start_game`/`load_action`, all town-screen titles use `town_name()`
+
 - Interactive locations on map (town/village/dungeon gameplay)
-- Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Quest system (quest lines with objectives and rewards)
 - Crafting system (craft items using enemy drops)

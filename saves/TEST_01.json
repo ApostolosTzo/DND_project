@@ -18,5 +18,12 @@
   "weapon": "Dagger",
   "armor": "Leather",
   "shield": null,
-  "inventory": []
+  "inventory": [
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion",
+    "Healing Potion"
+  ]
 }

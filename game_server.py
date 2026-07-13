@@ -41,9 +41,13 @@ def player_json(p):
 
 # Function to respond with the current game state
 
+def town_name():
+    # Get the name of the current location based on the game state. 
+    # If the current location is not set, default to "Town".
+    loc = LOCATIONS.get(gs["current_location"])
+    return loc["name"] if loc else "Town"
+
 def respond(screen, title, body, options, extra=None):
-    if screen == "town":
-        gs["current_location"] = "town"
     out = {
         "screen": screen,
         "title": title,
@@ -87,8 +91,9 @@ def start_game():
     class_name = data.get("class", "Fighter")
     gs["player"] = make_character(name, race, class_name)
     gs["screen"] = "town"
+    gs["current_location"] = "town"
     gs["log"] = ["Welcome, adventurer!"]
-    return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
 # Function to handle player actions
 # locations and their connections are defined in world_map.py
@@ -116,26 +121,26 @@ def handle_action():
     elif gs["screen"] == "save_menu":
         gs["screen"] = "town"
         gs["log"] = []
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "confirm_overwrite":
         if choice == 0:
             return force_save()
         gs["screen"] = "town"
         gs["pending_save_name"] = None
         gs["log"] = []
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "load_menu":
         return load_action(choice)
     # Handle location travel
     elif gs["screen"] == "location":
         gs["screen"] = "town"
         gs["log"] = []
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "dungeon":
         if choice == 1:
             gs["screen"] = "town"
             gs["log"] = []
-            return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+            return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
         gs["log"] = ["The dungeon is not ready yet."]
         return respond("dungeon", "Dungeon", "The entrance looms before you...", ["Enter", "(Back)"])
     elif gs["screen"] == "game_over":
@@ -162,7 +167,7 @@ def do_save():
     save_game(p, name)
     p.current_save = name
     gs["log"] = [f"Game saved as '{name}'!"]
-    return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
 @app.route("/force_save", methods=["POST"])
 def force_save():
@@ -212,9 +217,11 @@ def town_action(choice):
         gs["log"] = []
         return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game", "Quit"])
 
-    return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
+#==============================
 # ---- Combat ----
+#=============================
 def combat_state():
     e = gs["enemy"]
     p = gs["player"]
@@ -225,7 +232,8 @@ def combat_action(choice):
     p = gs["player"]
     e = gs["enemy"]
 
-    if choice == 0:  # Attack
+    # Attack
+    if choice == 0:  
         result = web_player_attack(p, e)
         gs["log"] = [result]
 
@@ -240,8 +248,9 @@ def combat_action(choice):
             return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
 
         return combat_state()
-
-    elif choice == 1:  # Use Item
+    
+    # Use Item
+    elif choice == 1:  
         consumables = [item for item in p.inventory if item.category == "item" and item != p.weapon and item != p.armor and item != p.shield]
         if not consumables:
             gs["log"] = ["No potions to use!"]
@@ -250,7 +259,8 @@ def combat_action(choice):
         gs["screen"] = "combat_item"
         return respond("combat_item", "Use Item", "Choose an item:", [f"{i.name}" for i in consumables] + ["(Back)"])
 
-    elif choice == 2:  # Flee
+    # Flee
+    elif choice == 2:  
         if roll("1d20") >= 10:
             gs["enemy"] = None
             gs["screen"] = "town"
@@ -267,6 +277,7 @@ def combat_action(choice):
 
     return combat_state()
 
+# Use Item
 def combat_item_action(choice):
     p = gs["player"]
     e = gs["enemy"]
@@ -303,6 +314,7 @@ def combat_item_action(choice):
     gs["screen"] = "combat"
     return combat_state()
 
+# Player Attack
 def web_player_attack(p, e):
     if p.weapon and "finesse" in p.weapon.properties:
         mod = p.modifier("DEX")
@@ -321,6 +333,7 @@ def web_player_attack(p, e):
     else:
         return f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
 
+# Enemy Attack
 def web_enemy_attack(p, e):
     bonus = e.level // 2 + 2
     atk = roll("1d20") + bonus
@@ -334,6 +347,7 @@ def web_enemy_attack(p, e):
     else:
         return f"{e.name} missed you! (d20 + {bonus} = {atk} vs your AC {p.ac})"
 
+# Combat Reward
 def combat_reward(title):
     p = gs["player"]
     e = gs["enemy"]
@@ -354,6 +368,7 @@ def combat_reward(title):
     gs["screen"] = "town"
     return respond("town", title, "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
+# Level up handling
 def handle_level_up():
     p = gs["player"]
     old_con = p.modifier("CON")
@@ -369,6 +384,7 @@ def handle_level_up():
         return p.level
     return None
 
+# Stat Boost Action
 def stat_boost_action(choice):
     p = gs["player"]
     old_con = p.modifier("CON")
@@ -395,19 +411,36 @@ def stat_boost_action(choice):
     gs["screen"] = "town"
     return respond("town", "Character Updated!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
+#==============================
 # ---- Shop ----
+#==============================
 from shop import SHOP_NPCS
 
+# Shop State
 def shop_state():
-    shop_names = list(SHOP_NPCS.keys())
+    loc_id = gs["current_location"] # Get the current location ID from the game state
+    loc = LOCATIONS.get(loc_id, {}) # Get the current location data from LOCATIONS
+    # Get the list of shops available at the current location, 
+    # defaulting to all shops if none are specified
+    shop_names = loc.get("shops", list(SHOP_NPCS.keys())) 
+    # If there are no shops available at the current location, 
+    # set the log message and return to the town screen
+    if not shop_names: 
+        gs["log"] = ["No shops here."]
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     return respond("shop_select", "Which shop?", "", shop_names + ["(Back)"])
 
+# Shop Select Action
 def shop_select_action(choice):
-    shop_names = list(SHOP_NPCS.keys())
-    if choice >= len(shop_names):
+    loc_id = gs["current_location"]
+    loc = LOCATIONS.get(loc_id, {})
+    shop_names = loc.get("shops", list(SHOP_NPCS.keys()))
+    # If the choice is out of bounds (e.g., "(Back)" option), return to town
+    if choice >= len(shop_names): 
         gs["screen"] = "town"
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
+    # If a valid shop is selected, set the current shop in the game state and show the shop interface
     shop_name = shop_names[choice]
     gs["shop_name"] = shop_name
     return show_shop(shop_name)
@@ -484,7 +517,7 @@ def inventory_action(choice):
     names = list(grouped.keys())
     if not names or choice >= len(names):
         gs["screen"] = "town"
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
     item = grouped[names[choice]][0]
 
@@ -548,6 +581,7 @@ def load_action(choice):
     gs["player"] = player
     gs["enemy"] = None
     gs["screen"] = "town"
+    gs["current_location"] = "town"
     gs["log"] = [f"Loaded '{name}'!"]
     return respond("town", "Game Loaded!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
@@ -579,17 +613,17 @@ def travel():
     current_id = gs["current_location"] or "town"
     if target_id == current_id:
         gs["log"] = ["You are already here."]
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     current = LOCATIONS.get(current_id)
     if not current or target_id not in current["connects_to"]:
         gs["log"] = ["You can't reach that location from here."]
-        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     target = LOCATIONS.get(target_id)
     if not target:
         return get_state()
     gs["current_location"] = target_id
     gs["log"] = [f"You arrive at {target['name']}."]
-    if target["type"] == "town":
+    if target["type"] in ("town", "village"):
         gs["screen"] = "town"
         return respond("town", target["name"], "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif target["type"] == "dungeon":
