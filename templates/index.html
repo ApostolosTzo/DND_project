@@ -171,23 +171,7 @@
             <div id="screen-body"></div>
             <div id="options"></div>
             <div id="log"></div>
-            <div id="map-container">
-                <svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="520" height="360" fill="#16213e" rx="4"/>
-                    <line x1="80" y1="180" x2="380" y2="180" stroke="#555" stroke-width="2"/>
-                    <line x1="380" y1="180" x2="380" y2="50" stroke="#555" stroke-width="2"/>
-                    <line x1="380" y1="180" x2="380" y2="310" stroke="#555" stroke-width="2"/>
-                    <line x1="380" y1="310" x2="470" y2="310" stroke="#555" stroke-width="2"/>
-                    <circle cx="80" cy="180" r="10" fill="#c9a84c" stroke="#dbb95c" stroke-width="2"/>
-                    <circle cx="380" cy="50" r="7" fill="#5dade2" stroke="#85c1e9" stroke-width="1.5"/>
-                    <circle cx="380" cy="310" r="7" fill="#5dade2" stroke="#85c1e9" stroke-width="1.5"/>
-                    <circle cx="470" cy="310" r="7" fill="#c0392b" stroke="#e74c3c" stroke-width="1.5"/>
-                    <text x="80" y="158" text-anchor="middle" fill="#c9a84c" font-family="'Courier New',monospace" font-size="13" font-weight="bold">Town</text>
-                    <text x="380" y="36" text-anchor="middle" fill="#85c1e9" font-family="'Courier New',monospace" font-size="11">Village 2</text>
-                    <text x="380" y="340" text-anchor="middle" fill="#85c1e9" font-family="'Courier New',monospace" font-size="11">Village 1</text>
-                    <text x="470" y="340" text-anchor="middle" fill="#e74c3c" font-family="'Courier New',monospace" font-size="11">Dungeon</text>
-                </svg>
-            </div>
+            <div id="map-container"></div>
         </div>
         <div id="right">
             <h3>Player</h3>
@@ -223,6 +207,64 @@ let currentState = null;
 let buyItemName = null;
 let raceData = [];
 let classData = [];
+let mapLocations = null;
+
+
+async function loadMapData() {
+    const r = await fetch("/map_data");
+    const d = await r.json();
+    mapLocations = d.locations;
+}
+
+async function travel(id) {
+    const r = await fetch("/travel", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({location: id})
+    });
+    const s = await r.json();
+    render(s);
+}
+
+function drawMap(currentId) {
+    const container = document.getElementById("map-container");
+    if (!mapLocations || !currentId || !mapLocations[currentId]) {
+        container.innerHTML = "";
+        return;
+    }
+    const locs = mapLocations;
+    const current = locs[currentId];
+    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#16213e" rx="4"/>`;
+    const drawn = new Set();
+    for (const [id, loc] of Object.entries(locs)) {
+        for (const target of loc.connects_to) {
+            const key = [id, target].sort().join("-");
+            if (drawn.has(key)) continue;
+            drawn.add(key);
+            const t = locs[target];
+            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#555" stroke-width="2"/>`;
+        }
+    }
+    for (const [id, loc] of Object.entries(locs)) {
+        const isCurrent = id === currentId;
+        const isConnected = current.connects_to.includes(id);
+        const canReach = isCurrent || isConnected;
+        const opacity = canReach ? 1 : 0.35;
+        const r = isCurrent ? 12 : 7;
+        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#5dade2";
+        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        if (isCurrent) {
+            svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
+        }
+        const clickable = isConnected && !isCurrent;
+        svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}"${clickable ? ' style="cursor:pointer" onclick="travel(\'' + id + '\')"' : ""}/>`;
+        const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
+        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
+    }
+    svg += `<text x="12" y="22" fill="#a8d8ea" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
+    svg += "</svg>";
+    container.innerHTML = svg;
+}
 
 async function fetchState() {
     const r = await fetch("/state");
@@ -377,6 +419,7 @@ function render(s) {
         const xpPct = p.xp_to_next > 0 ? (p.xp / p.xp_to_next * 100) : 0;
         document.getElementById("xp-fill").style.width = xpPct + "%";
     }
+    drawMap(s.current_location);
 }
 
 function handleClick(screen, index) {
@@ -428,6 +471,12 @@ function handleClick(screen, index) {
     else if (screen === "inventory") {
         doAction(index);
     }
+    else if (screen === "location") {
+        doAction(index);
+    }
+    else if (screen === "dungeon") {
+        doAction(index);
+    }
 }
 
 function showBuy(index) {
@@ -450,6 +499,7 @@ function hideBuy() {
     document.getElementById("buy-overlay").style.display = "none";
 }
 
+loadMapData();
 fetchState();
 </script>
 </body>

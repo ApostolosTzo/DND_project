@@ -277,7 +277,38 @@ self.weapon = None                          # line 47 ← assigned too late
 ### The fix
 Moved `self.weapon`, `self.armor`, and `self.shield` assignment to right after `self.stats`, before `max_hp` and `ac` are calculated. Now all attributes exist before any method that reads them is called.
 
+## Interactive World Map
+
+### What was added
+- **`world_map.py`** — new file defining all map locations (Town, Village 1, Village 2, Dungeon) with coordinates, types, and connection graph (`connects_to` list)
+- **`/map_data` endpoint** — returns all locations with their properties
+- **`/travel` endpoint** — POST with `{location: id}`, validates connection graph, updates `gs["current_location"]`, returns log message
+- **`gs["current_location"]`** — tracks where the player is on the map; auto-set to "town" whenever the town screen is shown
+- **Dynamic SVG map** — replaces the old static SVG. Rendered in JS from `world_map.py` data
+  - **Current location** — larger gold dot with pulsing ring animation
+  - **Connected locations** — full brightness, clickable (cursor: pointer)
+  - **Unreachable locations** — dimmed to 35% opacity, not clickable
+  - **Click a dot** → POST `/travel` → location updates → map redraws
+  - **Corner label** — `"You are at: Town"` in top-left of SVG
+  - **Lines** — drawn between all connected node pairs (deduplicated)
+- **Dungeon screen** — travelling to the dungeon shows `"The entrance looms before you..."` with Enter/Back options (Enter not implemented yet)
+- **Village screen** — travelling to a village shows a generic screen with Back option
+
+### How travel works
+1. Player clicks a connected (bright) dot on the map
+2. Client sends `POST /travel {location: "village1"}`
+3. Server checks `current_location.connects_to` includes target
+4. If valid: updates `gs["current_location"]`, returns screen for that location type
+5. If invalid: returns error message, stays put
+6. Map redraws with new current location — reachable connections change accordingly
+
+### Files created/changed
+- `world_map.py` — NEW: location definitions
+- `game_server.py` — import `LOCATIONS`, `gs["current_location"]`, `/map_data`, `/travel` endpoints, `respond()` includes `current_location` and auto-sets it for town screen, action handlers for `location`/`dungeon` screens
+- `templates/index.html` — replaced static SVG with JS `drawMap()` function, added `travel()`, `loadMapData()`, `mapLocations` global, `drawMap()` call at end of `render()`, startup calls `loadMapData()` + `fetchState()`, handleClick cases for `location`/`dungeon` screens
+
 ## To Do
+- Interactive locations on map (town/village/dungeon gameplay)
 - Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Dungeon floors (multi-floor dungeons with bosses on final floor)
 - Quest system (quest lines with objectives and rewards)

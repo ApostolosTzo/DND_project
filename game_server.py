@@ -4,6 +4,7 @@ from items import ITEMS, create_item
 from enemy import generate_enemy
 from dice import roll
 from save_load import save_game, load_game, list_saves, save_exists
+from world_map import LOCATIONS
 
 app = Flask(__name__)
 
@@ -14,6 +15,7 @@ gs = {
     "log": [],
     "pending_stat_boost": None,
     "pending_save_name": None,
+    "current_location": None,
 }
 
 def player_json(p):
@@ -37,7 +39,11 @@ def player_json(p):
         "stat_bonuses": p.get_equipment_stat_bonus(),
     }
 
+# Function to respond with the current game state
+
 def respond(screen, title, body, options, extra=None):
+    if screen == "town":
+        gs["current_location"] = "town"
     out = {
         "screen": screen,
         "title": title,
@@ -45,6 +51,8 @@ def respond(screen, title, body, options, extra=None):
         "options": options,
         "player": player_json(gs["player"]),
         "log": gs["log"],
+        # Include the current location in the response
+        "current_location": gs["current_location"],
     }
     if extra:
         out.update(extra)
@@ -82,11 +90,15 @@ def start_game():
     gs["log"] = ["Welcome, adventurer!"]
     return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
+# Function to handle player actions
+# locations and their connections are defined in world_map.py
 @app.route("/action", methods=["POST"])
 def handle_action():
     data = request.json
     choice = data.get("choice", 0)
 
+    # Determine the current screen and call the appropriate action handler
+    
     if gs["screen"] == "town":
         return town_action(choice)
     elif gs["screen"] == "combat":
@@ -114,6 +126,18 @@ def handle_action():
         return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "load_menu":
         return load_action(choice)
+    # Handle location travel
+    elif gs["screen"] == "location":
+        gs["screen"] = "town"
+        gs["log"] = []
+        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    elif gs["screen"] == "dungeon":
+        if choice == 1:
+            gs["screen"] = "town"
+            gs["log"] = []
+            return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        gs["log"] = ["The dungeon is not ready yet."]
+        return respond("dungeon", "Dungeon", "The entrance looms before you...", ["Enter", "(Back)"])
     elif gs["screen"] == "game_over":
         gs["player"] = None
         gs["enemy"] = None
@@ -526,6 +550,54 @@ def load_action(choice):
     gs["screen"] = "town"
     gs["log"] = [f"Loaded '{name}'!"]
     return respond("town", "Game Loaded!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+
+#================================
+# ---- Map ----
+#================================
+# This section handles the world map data and travel between locations. 
+# The locations and their connections are defined in world_map.py.
+@app.route("/map_data")
+def map_data():
+    current_id = gs["current_location"]
+    return jsonify({
+        "locations": {k: {"name": v["name"], "x": v["x"], "y": v["y"], "type": v["type"], "connects_to": v["connects_to"]} for k, v in LOCATIONS.items()},
+        "current_location": current_id,
+    })
+
+# travel endpoint to move between locations
+# The travel endpoint checks if the player can move to the target location 
+# based on the current location and the connections defined in LOCATIONS. 
+# It updates the game state accordingly and responds with the new location's information.
+
+@app.route("/travel", methods=["POST"])
+def travel():
+    p = gs["player"]
+    if not p:
+        return get_state()
+    data = request.json
+    target_id = data.get("location")
+    current_id = gs["current_location"] or "town"
+    if target_id == current_id:
+        gs["log"] = ["You are already here."]
+        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    current = LOCATIONS.get(current_id)
+    if not current or target_id not in current["connects_to"]:
+        gs["log"] = ["You can't reach that location from here."]
+        return respond("town", "Town", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    target = LOCATIONS.get(target_id)
+    if not target:
+        return get_state()
+    gs["current_location"] = target_id
+    gs["log"] = [f"You arrive at {target['name']}."]
+    if target["type"] == "town":
+        gs["screen"] = "town"
+        return respond("town", target["name"], "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    elif target["type"] == "dungeon":
+        gs["screen"] = "dungeon"
+        return respond("dungeon", target["name"], "The entrance looms before you...", ["Enter", "(Back)"])
+    else:
+        gs["screen"] = "location"
+        return respond("location", target["name"], "Nothing to do here yet.", ["(Back)"])
 
 if __name__ == "__main__":
     app.run(debug=True)
