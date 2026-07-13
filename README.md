@@ -24,7 +24,6 @@ This project is **under active development**. Expect frequent changes, incomplet
 - **Dungeon floors** — each dungeon has multiple floors with enemies, final floor has a boss
 - **Interactive map locations** — clickable towns, villages, and dungeons
 - **Quest system** — quest lines with objectives and rewards
-- **Quest system** — quest lines with objectives and rewards
 - **Crafting system** — craft items using drops from enemies
 - **More items** — expanded weapons, armors, potions, and materials
 - **More races & classes** — additional character options
