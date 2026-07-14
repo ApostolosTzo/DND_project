@@ -1,81 +1,70 @@
-# D&D Terminal Game
+# D&D RPG
 
-A work-in-progress Dungeons & Dragons-style RPG that runs in the terminal (Python) or in a browser (Flask).
-
-## Project Status
-
-This project is **under active development**. Expect frequent changes, incomplete features, and rough edges.
+A browser-based Dungeons & Dragons-style RPG built with Flask. Features a world map, dungeon crawling, turn-based combat, character progression with a flexible skill point system, and NPC shops.
 
 ## Current Features
 
 - **Character creation** — choose race (Human/Elf/Dwarf/Halfling) and class (Fighter/Rogue/Wizard/Cleric), stats rolled via 4d6-drop-lowest
-- **Turn-based combat** — attack, use items, or flee against level-scaled enemies
-- **7 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost (levels 1–100)
-- **Leveling system** — XP-based leveling with stat boosts every 4 levels
-- **Equipment** — weapons and armor with AC calculation (light/medium/heavy)
-- **NPC shops** — 5 shops: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard
+- **Turn-based combat** — attack, use items, or flee against level-scaled enemies (no fleeing in dungeon)
+- **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
+- **Skill point leveling** — 1 skill point per level, 5 points on levels 4/8/12/…, freely distribute across all 6 stats
+- **Stat effects** — STR (melee damage), DEX (ranged/finesse damage + AC), CON (max HP), INT/WIS/CHA (placeholder)
+- **Equipment with stat bonuses** — weapons and armor can boost STR/DEX/CON/INT, affecting damage, AC, and HP
+- **AC calculation** — light (DEX), medium (DEX capped at 2), heavy (no DEX), shield (+2)
+- **NPC shops** — 5 NPCs: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard; availability varies by location
 - **30+ items** — weapons, armors, shields, potions, scrolls, magical items
-- **Item stat bonuses** — equipment can boost STR, DEX, CON, INT, etc., affecting damage, AC, and HP
-- **Save/Load** — multi-save JSON system with overwrite protection
-- **World map** — visual SVG map showing town, villages, and dungeon connections (browser version)
-
-## Planned Features
-
-- **Dungeon floors** — each dungeon has multiple floors with enemies, final floor has a boss
-- **Interactive map locations** — clickable towns, villages, and dungeons
-- **Quest system** — quest lines with objectives and rewards
-- **Crafting system** — craft items using drops from enemies
-- **More items** — expanded weapons, armors, potions, and materials
-- **More races & classes** — additional character options
-- **Skills in combat** — special abilities and skill actions
-- **More potions** — variety of consumables beyond healing
+- **Interactive world map** — clickable nodes to travel between Town, Village 1, Village 2, and Dungeon
+- **10-floor dungeon** — progressive enemy scaling, potion merchant on floor 5, boss fight on floor 10
+- **Boss encounters** — Demon Lord and Elder Dragon only appear on dungeon floor 10
+- **Multi-save JSON system** — save/load with overwrite confirmation
+- **Combat item grouping** — duplicate items shown as "Name xN" in combat inventory
 
 ## How to Run
 
-### Terminal version
-
-```bash
-py main.py
-```
-
-### Browser version
-
 ```bash
 pip install flask
-py run_server.py
+python game_server.py
 ```
 
 Then open **http://localhost:5000** in your browser.
 
-## Controls (Terminal)
+## Controls
 
-- **Arrow keys** (↑/↓) — navigate menus
-- **Enter** — select option
-- **Typed input** — character name, save names
+Click the on-screen buttons to navigate. No keyboard input needed.
 
 ## Tech Stack
 
 - Python 3
-- Flask (web version)
+- Flask
 - JSON save files
+- SVG (world map)
 
 ## Project Structure
 
 ```
 DND_project/
-├── main.py              # Terminal entry point
-├── game_server.py       # Flask web server
-├── run_server.py        # Server launcher
+├── game_server.py       # Flask web server (all game logic)
+├── enemy.py             # Enemy templates, bosses, scaling
 ├── player.py            # Character creation, stats, leveling
-├── combat.py            # Turn-based combat
-├── enemy.py             # Enemy templates and scaling
-├── items.py             # Weapons, armor, potions
-├── inventory.py         # Inventory management
-├── shop.py              # NPC shops
+├── items.py             # Weapons, armor, shields, potions
+├── shop.py              # NPC shop definitions
+├── world_map.py         # Location definitions and connections
 ├── dice.py              # Dice rolling engine
 ├── save_load.py         # Multi-save JSON system
-├── ui.py                # Terminal UI utilities
+├── inventory.py         # Inventory management (terminal, unused)
+├── combat.py            # Combat (terminal, unused)
+├── ui.py                # Terminal UI utilities (kept for imports)
+├── PROGRESS.md          # Development changelog and analysis
 ├── templates/
 │   └── index.html       # Browser UI
-└── saves/               # Save files
+└── saves/               # Save files directory
 ```
+
+## Planned Features
+
+- Quest system (objectives and rewards)
+- Crafting system (craft from enemy drops)
+- More items, races, classes
+- Skills in combat (special abilities)
+- Sell back items to shops
+- Difficulty scaling options
