@@ -40,6 +40,7 @@ def save_game(player, save_name=None):
         "armor": player.armor.name if player.armor else None,
         "shield": player.shield.name if player.shield else None,
         "inventory": [item.name for item in player.inventory],
+        "skill_points": player.skill_points,
     }
     with open(_filename(save_name), "w") as f:
         json.dump(data, f, indent=2)
@@ -68,6 +69,7 @@ def load_game(save_name):
         player.ac = player.calc_ac()
     for item_name in data["inventory"]:
         player.add_item(create_item(item_name))
+    player.skill_points = data.get("skill_points", 0)
     return player
 
 def save_exists(save_name):

@@ -49,6 +49,7 @@ class Player:
         self.inventory = []
         self.gold = 0
         self.current_save = None
+        self.skill_points = 0
         self.ac = self.calc_ac()
 
     def get_equipment_stat_bonus(self):

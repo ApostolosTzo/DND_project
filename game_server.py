@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from player import Player, create_character, make_character, STAT_ORDER, CLASSES, RACES
 from items import ITEMS, create_item
-from enemy import generate_enemy
+from enemy import generate_enemy, generate_dungeon_enemy
 from dice import roll
 from save_load import save_game, load_game, list_saves, save_exists
 from world_map import LOCATIONS
@@ -16,6 +16,7 @@ gs = {
     "pending_stat_boost": None,
     "pending_save_name": None,
     "current_location": None,
+    "dungeon_floor": 0,
 }
 
 def player_json(p):
@@ -117,8 +118,8 @@ def handle_action():
         return shop_action(choice)
     elif gs["screen"] == "inventory":
         return inventory_action(choice)
-    elif gs["screen"] == "stat_boost":
-        return stat_boost_action(choice)
+    elif gs["screen"] == "stat_allocation":
+        return allocation_action(choice)
     elif gs["screen"] == "save_menu":
         gs["screen"] = "town"
         gs["log"] = []
@@ -138,15 +139,23 @@ def handle_action():
         gs["log"] = []
         return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "dungeon":
-        if choice == 1:
-            gs["screen"] = "town"
-            gs["log"] = []
-            return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
-        gs["log"] = ["The dungeon is not ready yet."]
-        return respond("dungeon", "Dungeon", "The entrance looms before you...", ["Enter", "(Back)"])
+        if choice == 0:
+            return enter_dungeon()
+        gs["screen"] = "town"
+        gs["log"] = []
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    elif gs["screen"] == "dungeon_floor":
+        return dungeon_floor_action(choice)
+    elif gs["screen"] == "dungeon_victory":
+        gs["dungeon_floor"] = 0
+        gs["current_location"] = "village1"
+        gs["screen"] = "town"
+        gs["log"] = ["You return to Village 1, victorious!"]
+        return respond("town", "Village 1", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
     elif gs["screen"] == "game_over":
         gs["player"] = None
         gs["enemy"] = None
+        gs["dungeon_floor"] = 0
         gs["screen"] = "main_menu"
         gs["log"] = []
         return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game", "Quit"])
@@ -227,6 +236,8 @@ def combat_state():
     e = gs["enemy"]
     p = gs["player"]
     body = f"{e.display()}\n\n{player_json(p)['name']}: HP {p.hp}/{p.max_hp}  AC {p.ac}"
+    if gs["dungeon_floor"] > 0:
+        return respond("combat", "COMBAT", body, ["Attack", "Use Item"])
     return respond("combat", "COMBAT", body, ["Attack", "Use Item", "Flee"])
 
 def combat_action(choice):
@@ -257,11 +268,19 @@ def combat_action(choice):
             gs["log"] = ["No potions to use!"]
             return combat_state()
 
+        grouped = {}
+        for item in consumables:
+            grouped.setdefault(item.name, []).append(item)
+        names = list(grouped.keys())
+        options = [f"{n} x{len(grouped[n])}" if len(grouped[n]) > 1 else n for n in names] + ["(Back)"]
         gs["screen"] = "combat_item"
-        return respond("combat_item", "Use Item", "Choose an item:", [f"{i.name}" for i in consumables] + ["(Back)"])
+        return respond("combat_item", "Use Item", "Choose an item:", options)
 
-    # Flee
-    elif choice == 2:  
+    # Flee (not allowed in dungeon)
+    elif choice == 2:
+        if gs["dungeon_floor"] > 0:
+            gs["log"] = ["You cannot flee from the dungeon!"]
+            return combat_state()
         if roll("1d20") >= 10:
             gs["enemy"] = None
             gs["screen"] = "town"
@@ -283,12 +302,16 @@ def combat_item_action(choice):
     p = gs["player"]
     e = gs["enemy"]
     consumables = [item for item in p.inventory if item.category == "item" and item != p.weapon and item != p.armor and item != p.shield]
+    grouped = {}
+    for item in consumables:
+        grouped.setdefault(item.name, []).append(item)
+    names = list(grouped.keys())
 
-    if choice >= len(consumables):
+    if choice >= len(names):
         gs["screen"] = "combat"
         return combat_state()
 
-    item = consumables[choice]
+    item = grouped[names[choice]][0]
     if item.name == "Healing Potion":
         heal = 9
         p.hp = min(p.hp + heal, p.max_hp)
@@ -357,22 +380,26 @@ def combat_reward(title):
     p.add_gold(gold)
     gs["log"] = [f"{e.name} defeated!", f"Looted {gold} gold!", f"Gained {xp} XP!"]
 
-    # Handle XP / level-up
+    if gs["dungeon_floor"] == 10:
+        bonus_gold = 500
+        bonus_xp = 500
+        p.add_gold(bonus_gold)
+        xp += bonus_xp
+        gs["log"].append(f"Dungeon cleared! Bonus: {bonus_gold} gold, {bonus_xp} XP!")
+
     p.xp += xp
     while p.xp >= p.xp_to_next():
-        stat_boost = handle_level_up()
-        if stat_boost:
-            gs["screen"] = "stat_boost"
-            return respond("stat_boost", f"LEVEL UP! You are now level {p.level}!", "Choose a stat to increase by 1:", STAT_ORDER)
+        p.xp -= p.xp_to_next()
+        handle_level_up()
 
     gs["enemy"] = None
-    gs["screen"] = "town"
-    return respond("town", title, "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    if p.skill_points > 0:
+        return allocation_state()
+    return after_combat()
 
 # Level up handling
 def handle_level_up():
     p = gs["player"]
-    old_con = p.modifier("CON")
     p.level += 1
     hp_gain = p.hp_per_level()
     p.max_hp += hp_gain
@@ -382,35 +409,35 @@ def handle_level_up():
     gs["log"].append(f"LEVEL UP! Now level {p.level}! HP +{hp_gain}, +{gold_r} gold!")
 
     if p.level % 4 == 0:
-        return p.level
-    return None
+        p.skill_points += 5
+    else:
+        p.skill_points += 1
 
-# Stat Boost Action
-def stat_boost_action(choice):
+# Stat Allocation
+def allocation_state():
     p = gs["player"]
-    old_con = p.modifier("CON")
+    body_lines = [f"{s}: {p.stats[s]}" for s in STAT_ORDER]
+    return respond("stat_allocation", f"Allocate Skill Points ({p.skill_points} left)", "\n".join(body_lines), [f"[+] {s}" for s in STAT_ORDER])
+
+def allocation_action(choice):
+    p = gs["player"]
+    if p.skill_points <= 0:
+        return after_combat()
     chosen = STAT_ORDER[choice]
+    old_con = p.modifier("CON")
     p.stats[chosen] += 1
     p.ac = p.calc_ac()
-    if chosen == "CON" and p.modifier("CON") > old_con:
-        p.max_hp += 1
-    gs["log"].append(f"{chosen} increased to {p.stats[chosen]}!")
+    if chosen == "CON":
+        p.recalc_hp()
+    p.skill_points -= 1
+    gs["log"] = [f"{chosen} increased to {p.stats[chosen]}!"]
 
-    # Autosave
-    if p.current_save:
-        save_game(p, p.current_save)
-        gs["log"].append("Game autosaved!")
-
-    # Process any pending XP (multiple level-ups)
-    while p.xp >= p.xp_to_next():
-        stat_boost = handle_level_up()
-        if stat_boost:
-            gs["screen"] = "stat_boost"
-            return respond("stat_boost", f"LEVEL UP! You are now level {p.level}!", "Choose a stat to increase by 1:", STAT_ORDER)
-
-    gs["enemy"] = None
-    gs["screen"] = "town"
-    return respond("town", "Character Updated!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    if p.skill_points <= 0:
+        if p.current_save:
+            save_game(p, p.current_save)
+            gs["log"].append("Game autosaved!")
+        return after_combat()
+    return allocation_state()
 
 #==============================
 # ---- Shop ----
@@ -447,9 +474,9 @@ def shop_select_action(choice):
     return show_shop(shop_name)
 
 def shop_action(choice):
-    # Called when user selects an item or Back inside a specific shop
-    # choice is the index of the option selected
-    # Last option is always "(Back)"
+    if gs["dungeon_floor"] > 0:
+        gs["screen"] = "dungeon_floor"
+        return dungeon_floor_state()
     loc_id = gs["current_location"]
     loc = LOCATIONS.get(loc_id, {})
     shop_names = loc.get("shops", list(SHOP_NPCS.keys()))
@@ -635,6 +662,92 @@ def travel():
     else:
         gs["screen"] = "location"
         return respond("location", target["name"], "Nothing to do here yet.", ["(Back)"])
+
+#================================
+# ---- Dungeon ----
+#================================
+
+# Dungeon logic is handled here, 
+# including entering the dungeon, progressing through floors, 
+# and handling combat and rewards.
+def enter_dungeon():
+    gs["dungeon_floor"] = 1
+    e = generate_dungeon_enemy(1, gs["player"].level)
+    gs["enemy"] = e
+    gs["log"] = ["You descend into the dungeon... Floor 1"]
+    return dungeon_floor_state()
+
+# Handle the state for each dungeon floor
+def dungeon_floor_state():
+    p = gs["player"]
+    title = f"Dungeon - Floor {gs['dungeon_floor']}/10"
+    e = gs["enemy"]
+    if e and e.is_alive():
+        body = f"{e.display()}\n\n{p.name}: HP {p.hp}/{p.max_hp}  AC {p.ac}"
+        return respond("dungeon_floor", title, body, ["Attack"])
+    else:
+        body = "Floor cleared!"
+        floor = gs["dungeon_floor"]
+        if floor == 5:
+            return respond("dungeon_floor", title, body, ["Visit Merchant", "Descend to Floor 6"])
+        elif floor == 10:
+            return respond("dungeon_floor", title, body, ["Visit Merchant", "Attack Boss"])
+        else:
+            return respond("dungeon_floor", title, body, [f"Descend to Floor {floor + 1}"])
+
+# Handle actions on the dungeon floor, 
+# including combat and merchant visits
+def dungeon_floor_action(choice):
+    e = gs["enemy"]
+    floor = gs["dungeon_floor"]
+
+    if e and e.is_alive():
+        gs["screen"] = "combat"
+        gs["log"] = []
+        return combat_state()
+
+    if floor == 5:
+        if choice == 0:
+            return dungeon_merchant()
+        else:
+            return advance_dungeon_floor()
+
+    if floor == 10:
+        if choice == 0:
+            return dungeon_merchant()
+        else:
+            gs["screen"] = "combat"
+            gs["log"] = ["The boss stands before you!"]
+            return combat_state()
+
+    return advance_dungeon_floor()
+
+# Advance to the next dungeon floor, generating a new enemy
+def advance_dungeon_floor():
+    gs["dungeon_floor"] += 1
+    floor = gs["dungeon_floor"]
+    e = generate_dungeon_enemy(floor, gs["player"].level)
+    gs["enemy"] = e
+    gs["log"] = [f"You descend to Floor {floor}"]
+    return dungeon_floor_state()
+
+# After all combat/level-up/allocation is done, continue the game
+def after_combat():
+    if gs["dungeon_floor"] > 0:
+        if gs["dungeon_floor"] == 10:
+            return respond("dungeon_victory", "DUNGEON CLEARED!", "You defeated the boss and conquered the dungeon!", ["Return to Village 1"])
+        return dungeon_floor_state()
+    gs["screen"] = "town"
+    return respond("town", "Victory!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+
+# Dungeon Merchant
+def dungeon_merchant():
+    gs["shop_name"] = "Potion Merchant"
+    shop = SHOP_NPCS["Potion Merchant"]
+    available = {n: d for n, d in shop["items"].items() if gs["player"].level >= d["min_level"]}
+    items_list = [f"{n} ({d['price']}g)" for n, d in available.items()]
+    gs["screen"] = "shop"
+    return respond("shop", "Dungeon Merchant", "", items_list + ["(Back)"], extra={"shop_items": list(available.keys()), "shop_prices": [d["price"] for d in available.values()], "dungeon_shop": True})
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -395,9 +395,10 @@ function render(s) {
     // Log
     const log = document.getElementById("log");
     log.innerHTML = "";
+    const ts = new Date().toTimeString().slice(0, 8);
     (s.log || []).forEach(msg => {
         const p = document.createElement("p");
-        p.textContent = msg;
+        p.textContent = `[${ts}] ${msg}`;
         log.appendChild(p);
     });
 
@@ -455,7 +456,7 @@ function handleClick(screen, index) {
     else if (screen === "game_over") {
         fetchState();
     }
-    else if (screen === "stat_boost") {
+    else if (screen === "stat_allocation") {
         doAction(index);
     }
     else if (screen === "shop_select") {
@@ -472,6 +473,12 @@ function handleClick(screen, index) {
         doAction(index);
     }
     else if (screen === "location") {
+        doAction(index);
+    }
+    else if (screen === "dungeon_floor") {
+        doAction(index);
+    }
+    else if (screen === "dungeon_victory") {
         doAction(index);
     }
     else if (screen === "dungeon") {

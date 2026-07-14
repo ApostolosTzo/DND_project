@@ -351,24 +351,179 @@ Now every response automatically syncs the server's internal screen state with w
 ### Lesson
 The root cause of all three bugs was the same: **server-side `gs["screen"]` was not kept in sync with the response screen**. The final fix (syncing inside `respond()`) eliminates the entire class of bugs at the source rather than patching each symptom individually.
 
-## To Do
-### Location-specific shops
-- Each location now has a `shops` list in `world_map.py`
-- **Town**: all 5 NPCs (Potion Merchant, Weaponsmith, Armorer, Archer, Wizard)
-- **Village 2**: Potion Merchant only
-- **Village 1**: Weaponsmith and Armorer
-- **Dungeon**: no shops
-- Villages now use the town screen (fight/shop/inventory/save) instead of a generic "location" screen — only the available shops change per location
-- Screen title dynamically shows the location name via `town_name()` helper function
-- `shop_state()` and `shop_select_action()` filter shop names by `LOCATIONS[current_location].shops`
-- Terminal version (main.py) unaffected — no map/location system there
+## Dungeon System
+
+### What was built
+A 10-floor dungeon crawl accessible from Village 1 with progressive enemy scaling, a mid-way merchant stop, and a boss encounter on the final floor.
+
+### Screen flow
+```
+[Dungeon Entrance] → Enter → [Floor N: enemy info] → Attack → [Combat] → Win → [Floor cleared]
+                                                                                      │
+                                                                            Floors 1-4, 6-9: auto → next floor
+                                                                            Floor 5:  ["Visit Merchant", "Descend to Floor 6"]
+                                                                            Floor 10: ["Visit Merchant", "Attack Boss"]
+                                                                                                  │
+                                                                                       Floor 10 boss killed
+                                                                                              ↓
+                                                                                    [DUNGEON CLEARED!]
+                                                                                    Bonus 500g + 500 XP
+                                                                                    Return to Village 1
+```
+
+### State tracking
+- `gs["dungeon_floor"]` — `0` = outside dungeon, `1–10` = current floor number
+- Initialized to `0` in the global state dict
+- Reset to `0` on game over (player death) and on dungeon victory
+
+### Enemy scaling (`enemy.py`)
+- **Normal floors (1–9)**: picks from the 7 base templates, enemy level = `player_level + floor // 2`
+- **Boss floor (10)**: picks from 2 new boss templates:
+  - **Demon Lord** (HP 60, AC 15, d10, +5 bonus)
+  - **Elder Dragon** (HP 75, AC 18, d12, +6 bonus)
+- Boss enemy level = `player_level + 3` — significantly harder than any overworld enemy
+
+### Key design decisions
+
+**1. Floor screen as a separate state (`dungeon_floor`) rather than folding directly into combat.**
+- Shows the enemy before engaging (player can size up the threat)
+- Provides a clean transition point for merchant/descend options after clearing
+- Avoids complicating the existing `combat` / `town` screen handlers
+
+**2. No Flee in the dungeon.**
+- `combat_state()` checks `gs["dungeon_floor"] > 0` and omits "Flee" from options
+- `combat_action()` blocks any flee attempt with `"You cannot flee from the dungeon!"`
+- Creates tension — the player must fight through or die trying
+
+**3. Merchant at floor 5 (after clear) and floor 10 (before boss).**
+- Reuses the existing shop system: `dungeon_merchant()` sets `gs["shop_name"] = "Potion Merchant"` and renders the Potion Merchant's inventory
+- `shop_action()` was modified to check `gs["dungeon_floor"] > 0` and return to the dungeon floor instead of the shop selection menu
+- Prevents softlock: player can buy potions before the boss, but can't escape the dungeon
+
+**4. Dungeon victory at floor 10 (boss death).**
+- `combat_reward()` routes to `dungeon_combat_reward()` when in dungeon
+- Boss kill grants 500 bonus gold + 500 bonus XP
+- `after_dungeon_combat()` helper prevents the `stat_boost_action` re-entry bug: if a level-up stat boost interrupts the boss victory flow, calling `after_dungeon_combat()` shows the victory screen without re-adding the bonus rewards
+
+**5. Dungeon merchant Back button handled via `shop_action()` check.**
+- Single line `if gs["dungeon_floor"] > 0: return dungeon_floor_state()` at the top of `shop_action()`
+- No need for a separate dungeon shop endpoint or client-side changes
+- After buying potions and pressing Back, the player returns to the floor screen
 
 ### Files changed
-- `world_map.py` — added `shops` list to each location
-- `game_server.py` — `shop_state()`/`shop_select_action()` filter by current location's shops, `/travel` uses town screen for villages, added `town_name()` helper, removed auto-location-set from `respond()`, explicit `current_location` in `start_game`/`load_action`, all town-screen titles use `town_name()`
 
-- Interactive locations on map (town/village/dungeon gameplay)
-- Dungeon floors (multi-floor dungeons with bosses on final floor)
+**`enemy.py`:**
+- Added 2 boss templates (Demon Lord, Elder Dragon) to `TEMPLATES`
+- Added `generate_dungeon_enemy(floor, player_level)` with floor-scaled level selection
+- Added `BOSS_NAMES` list for the floor-10 boss filter
+
+**`game_server.py`:**
+- Added `"dungeon_floor": 0` to `gs`
+- New functions: `enter_dungeon()`, `dungeon_floor_state()`, `dungeon_floor_action()`, `advance_dungeon_floor()`, `dungeon_combat_reward()`, `after_dungeon_combat()`, `dungeon_merchant()`
+- Modified: `combat_state()` (hide Flee), `combat_action()` (block Flee), `combat_reward()` (route to dungeon), `stat_boost_action()` (return to dungeon), `shop_action()` (return to dungeon floor), `handle_action()` (add `dungeon_floor` / `dungeon_victory` routing, replace dungeon placeholder), game_over handler (reset floor)
+
+**`templates/index.html`:**
+- Added `handleClick` cases for `"dungeon_floor"` and `"dungeon_victory"` screens
+
+### Analysis
+
+**What went well:**
+- The dungeon system integrates cleanly with the existing state-machine architecture — no blocking loops or new client-side state required
+- Boss templates reuse the existing `Enemy` class without special-casing; only `generate_dungeon_enemy()` differs
+- Merchant reuses the shop system with minimal modification (one line in `shop_action()`)
+- The `after_dungeon_combat()` / `dungeon_combat_reward()` split correctly handles the edge case where a level-4/8/12 stat boost interrupts the post-boss reward flow
+
+**What could be improved:**
+- No save option in the dungeon (intentional — player must commit or die). Could add a mid-dungeon save point on floor 5
+- Map still shows the overworld while in the dungeon (cosmetic — could hide map or show a dungeon floor plan)
+- No loot drops from bosses besides gold/XP (a unique boss weapon/armor drop would add replay value)
+- Floor 5 merchant sells only Healing Potion for low-level characters (Greater Healing Potion requires level 5). Could add a dungeon-specific stock
+
+### Future possibilities
+- Randomized dungeon layout (branching paths, dead ends)
+- Trap rooms, treasure rooms, and mini-boss rooms between normal floors
+- Unique boss loot (boss-specific weapons/armors)
+- Dungeon floor map display instead of the world map
+- Mid-dungeon save point
+
+## Files changed reference (all Dungeon commits)
+- `enemy.py` — bosses + `generate_dungeon_enemy()`
+- `game_server.py` — state + 7 new functions + 6 modified functions
+- `templates/index.html` — 2 new handleClick cases
+
+## Skill Point System (replaces old stat boost)
+
+### What changed
+The old system gave a single +1 to any stat every 4 levels. The new system gives flexible skill points that the player can distribute freely across all stats.
+
+### Point rewards
+- **Every level**: +1 skill point
+- **Levels 4, 8, 12, 16…**: +5 skill points (1 normal + 4 bonus)
+- Points accumulate across multiple level-ups and are spent in one session
+
+### How it works
+1. `handle_level_up()` in `game_server.py` adds skill points instead of triggering the old stat-boost return
+2. After all level-ups are processed (in `combat_reward()`), if `player.skill_points > 0`, the allocation screen is shown
+3. The allocation screen (`screen="stat_allocation"`) shows all 6 stats with their current values and `[+]` buttons
+4. Player clicks `[+]` on any stat → server spends 1 point, updates stat, recalculates AC, and if CON was increased, recalculates HP via `recalc_hp()`
+5. When all points are spent, an autosave fires (if `current_save` is set) and the game continues
+6. This works identically for both 1-point and multi-point sessions — same bulk screen
+
+### What each stat does
+
+| Stat | Effect | Formula |
+|---|---|---|
+| **STR** | Melee attack & damage (non-finesse, non-ranged weapons) | `modifier = (STR - 10) // 2` added to attack roll & damage |
+| **DEX** | Finesse/ranged attack & damage, **Armor Class** | Light armor: `AC = base + DEX mod`; Medium: `AC = base + min(DEX mod, 2)`; No armor: `AC = 10 + DEX mod` |
+| **CON** | **Max HP** | `max_hp` recalculated via `recalc_hp()` — each point of CON modifier adds +1 HP per level |
+| **INT** | *No current effect* (reserved for Wizard spells) | — |
+| **WIS** | *No current effect* (reserved for Cleric spells) | — |
+| **CHA** | *No current effect* | — |
+
+**INT, WIS, CHA** have no gameplay effect yet. They exist on the character sheet and can be allocated points, but don't influence damage, AC, HP, or any other mechanic.
+
+### Boss bonus XP change
+The 500 bonus XP for clearing floor 10 was moved from `dungeon_combat_reward()` into `combat_reward()`. This means all XP (enemy + boss bonus) is processed together before the allocation screen, so the player sees all skill points from all level-ups at once instead of being interrupted twice.
+
+### Functions removed/replaced
+| Old function | Replaced by |
+|---|---|
+| `stat_boost_action()` | `allocation_state()` + `allocation_action()` |
+| `after_dungeon_combat()` | `after_combat()` (handles both town and dungeon) |
+| `dungeon_combat_reward()` bonus logic | moved into `combat_reward()` |
+| `"stat_boost"` screen | `"stat_allocation"` screen |
+
+### Files changed
+- `player.py` — added `self.skill_points = 0` to `Player.__init__`
+- `save_load.py` — saves/loads `skill_points` (defaults to 0 for old saves)
+- `game_server.py` — rewrote `handle_level_up()`, `combat_reward()`, removed `stat_boost_action()`, added `allocation_state()` + `allocation_action()` + `after_combat()`, removed bonus XP from `dungeon_combat_reward()`, updated `handle_action()` routing
+- `templates/index.html` — replaced `"stat_boost"` handler with `"stat_allocation"` handler
+
+## XP Carry-Over Fix
+
+### The bug
+When leveling up, XP was never subtracted from the total. The `while` loop checked `p.xp >= p.xp_to_next()` but `p.xp` never decreased, so excess XP kept being counted at full value, causing way too many level-ups.
+
+### The fix
+Added `p.xp -= p.xp_to_next()` before `handle_level_up()` in `combat_reward()`. Each level-up now subtracts the required XP threshold, and the remaining XP carries over correctly.
+
+Example: gain 350 XP at level 1 → subtract 100 (reach level 2) → subtract 200 (reach level 3) → 50 XP remaining, correct.
+
+### File changed
+- `game_server.py` — one line added in `combat_reward()`
+
+## Combat Item Group Display
+
+### The problem
+The "Use Item" screen in combat showed every inventory entry as a separate option. Having 5 Healing Potions displayed 5 identical "Healing Potion" buttons instead of "Healing Potion x5".
+
+### The fix
+Grouped consumables by name (same pattern as the inventory screen). The options now show `"Healing Potion x5"` and clicking it uses one from that stack.
+
+### Files changed
+- `game_server.py` — `combat_action()` and `combat_item_action()` both build a grouped item dict and index into group names instead of raw item list
+
+## To Do
 - Quest system (quest lines with objectives and rewards)
 - Crafting system (craft items using enemy drops)
 - More items (scrolls, rings, materials, etc.)
@@ -376,4 +531,4 @@ The root cause of all three bugs was the same: **server-side `gs["screen"]` was 
 - Skills in combat (special abilities and actions)
 - More potions (variety of consumables)
 - Sell back items to shop
-- Difficulty scaling options ==> idk cause the game is scaling
+- Difficulty scaling options
