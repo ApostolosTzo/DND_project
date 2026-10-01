@@ -28,7 +28,7 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 
 ## How to Run
 
-### Option A - Static PWA (no server, works on GitHub Pages)
+### Static PWA (no server, works on GitHub Pages)
 
 ```bash
 python -m http.server 8000
@@ -36,24 +36,15 @@ python -m http.server 8000
 
 Then open **http://localhost:8000**. All game logic runs in the browser, so any static host works — including GitHub Pages.
 
-### Option B - Flask app (Python backend)
 
-```bash
-pip install flask
-python game_server.py
-```
 
-OR
 
-(Windows Python Launcher)
-```bash
-py -m pip install flask
-py ./game_server.py
-```
 
-Then open **http://localhost:5000** in your browser.
-
-> Both builds contain the same game rules and are kept in sync. If `python` points at a Python without Flask (some setups ship a bare `python`), use the `py` launcher form instead — or install Flask into the interpreter `python` resolves to.
+> Use the **`py`** launcher, not a bare `python`. On Windows, `python` on `PATH`
+> is often a different interpreter (an MSYS2 build here) that has no pip and no
+> Flask, which fails with `ModuleNotFoundError: No module named 'flask'`. If you
+> prefer the plain command, install Flask into whatever `python` resolves to and
+> make sure that's a full CPython, not the MSYS2 one.
 
 ## Install as an App (PWA)
 
@@ -243,7 +234,7 @@ DND_project/
 └── saves/               # Save files directory (Flask build only)
 ```
 
-The Python files power the Flask build (`python game_server.py`); `js/` is a port of them so the same game runs as a static PWA. Change both when you change game rules.
+The Python files power the Flask build (`py ./game_server.py`); `js/` is a port of them so the same game runs as a static PWA. Change both when you change game rules.
 
 ## Working on the Code
 
