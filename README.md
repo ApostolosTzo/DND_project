@@ -10,19 +10,20 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 - **Forgiving start** — every class gets +5 base HP and a full pack of 15 Healing Potions
 - **Loot** — kills pay 40% more XP and 60% more gold
 - **Turn-based combat** — attack, use items, or flee against level-scaled enemies (no fleeing in dungeon)
+- **Running combat log** — every exchange stays in the chat, so you can read back through a whole fight
 - **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
+- **Monster portraits** — original hand-drawn SVG for all 9 monsters; they lurch when hit and distort as they lose HP
 - **Skill point leveling** — 1 skill point per level, 5 points on levels 4/8/12/…, freely distribute across all 6 stats
 - **Stat effects** — STR (melee damage), DEX (ranged/finesse damage + AC), CON (max HP), INT/WIS/CHA (placeholder)
 - **Equipment with stat bonuses** — weapons and armor can boost STR/DEX/CON/INT, affecting damage, AC, and HP
 - **AC calculation** — light (DEX), medium (DEX capped at 2), heavy (no DEX), shield (+2)
 - **NPC shops** — 5 NPCs: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard; availability varies by location. Tap an item to expand an inline panel showing what it gives you (damage, properties, stat bonuses, AC change) with a one-tap **Buy** button
-- **Interactive world map** — an illustrated map with forests, mountains, a river and curved roads; clickable nodes to travel between Town, Village 1, Village 2, and Dungeon
-- **Monster portraits** — original hand-drawn SVG for all 9 monsters; they lurch when hit and distort as they lose HP
-- **30+ items** — weapons, armors, shields, potions, scrolls, magical items
-- **Interactive world map** — clickable nodes to travel between Town, Village 1, Village 2, and Dungeon
+- **Interactive world map** — an illustrated map with forests, mountains, a river and curved roads; clickable nodes to travel between Town, Village 1, Village 2, and Dungeon. It gets out of the way while you fight
+- **Mobile-friendly UI** — single-column layout, big tap targets and safe-area padding on phones
+- **42 items** — weapons, armors, shields, potions, scrolls, magical items
 - **10-floor dungeon** — progressive enemy scaling, potion merchant on floor 5, boss fight on floor 10
 - **Boss encounters** — Demon Lord and Elder Dragon only appear on dungeon floor 10
-- **Multi-save JSON system** — save/load with overwrite confirmation
+- **Multi-save system** — save/load with overwrite confirmation; JSON files in the Flask build, `localStorage` in the PWA
 - **Combat item grouping** — duplicate items shown as "Name xN" in combat inventory
 
 ## How to Run
@@ -51,6 +52,8 @@ py ./game_server.py
 ```
 
 Then open **http://localhost:5000** in your browser.
+
+> Both builds contain the same game rules and are kept in sync. If `python` points at a Python without Flask (some setups ship a bare `python`), use the `py` launcher form instead — or install Flask into the interpreter `python` resolves to.
 
 ## Install as an App (PWA)
 
@@ -83,7 +86,9 @@ icons/icon-maskable-512.png   # 512x512, art inside the middle 80% circle
 icons/apple-touch-icon.png   # 180x180
 ```
 
-After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v2`) so returning visitors pick up the new icons.
+After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v5`) so returning visitors pick up the new icons.
+
+> The cached files include everything under `js/`, and those are served **cache-first**. Bump `CACHE_VERSION` whenever you change `js/*.js` — otherwise players keep running the old game code even though the HTML updates.
 
 ## Controls
 
@@ -221,6 +226,7 @@ DND_project/
 │   └── game.js          # Game state machine (port of game_server.py)
 ├── icons/               # PWA icons (placeholder art)
 ├── game_server.py       # Flask web server (all game logic)
+├── run_server.py        # Alternative launcher: py run_server.py
 ├── enemy.py             # Enemy templates, bosses, scaling
 ├── player.py            # Character creation, stats, leveling
 ├── items.py             # Weapons, armor, shields, potions
@@ -239,11 +245,27 @@ DND_project/
 
 The Python files power the Flask build (`python game_server.py`); `js/` is a port of them so the same game runs as a static PWA. Change both when you change game rules.
 
+## Working on the Code
+
+This repo holds **two implementations of one game**, so a few rules keep them honest:
+
+| Rule | Why |
+|---|---|
+| Change game rules in **both** `*.py` and `js/*.js` | The Flask build and the PWA build ship side by side; a one-sided change makes them disagree |
+| New items: define in `items.py` **and** `js/items.js`, sell in `shop.py` **and** `js/shop.js` | If a shop lists an item the catalogue doesn't define, `create_item()` returns `None`, `None` lands in the inventory and the inventory/shop screen throws. A guard turns this into a harmless *"That item is not available."*, but the right fix is to add it to all four files |
+| The world map lives in `world_map.py` **and** `js/world_map.js` | Both builds read location coordinates and connections from them |
+| Bump `CACHE_VERSION` in `sw.js` when `js/*.js` changes | Those files are cached cache-first; without a bump, returning players keep the old code |
+| `templates/index.html` and the root `index.html` both contain the map renderer | The renderer is self-contained (its CSS sits in an SVG `<style>` block) so the block can be copied between them verbatim — keep them in step |
+
+`PROGRESS.md` is the running changelog: what changed, why, the bug chains, and post-mortems.
+
 ## Planned Features
 
+- **Export / import saves** so characters can be backed up and moved between devices
 - Quest system (objectives and rewards)
 - Crafting system (craft from enemy drops)
 - More items, races, classes
-- Skills in combat (special abilities)
+- Skills and spells in combat (INT/WIS are currently placeholders)
 - Sell back items to shops
 - Difficulty scaling options
+- Possibly: a minimum starting-HP floor or a heal between fights — see the death-rate table in `PROGRESS.md`

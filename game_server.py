@@ -98,12 +98,24 @@ def create_form():
         class_list.append((c, f"{c} - {CLASSES[c]['desc']}", CLASSES[c]["hp"], CLASSES[c]["primary"]))
     return jsonify({"races": race_list, "classes": class_list})
 
+# Clears anything left over from a previous run: a live enemy, a half-finished
+# dungeon crawl, a pending overwrite prompt or the last shop. Without this, a
+# new game (or a loaded save) started while the previous run was inside the
+# dungeon would silently inherit that state - no Flee option, and the world map
+# would stay hidden.
+def reset_run():
+    gs["enemy"] = None
+    gs["dungeon_floor"] = 0
+    gs["pending_save_name"] = None
+    gs["shop_name"] = None
+
 @app.route("/start", methods=["POST"])
 def start_game():
     data = request.json
     name = data.get("name", "Adventurer")
     race = data.get("race", "Human")
     class_name = data.get("class", "Fighter")
+    reset_run()
     gs["player"] = make_character(name, race, class_name)
     gs["screen"] = "town"
     gs["current_location"] = "town"
@@ -630,6 +642,7 @@ def load_action(choice):
 
     name = saves[choice][0]
     player = load_game(name)
+    reset_run()
     player.current_save = name
     gs["player"] = player
     gs["enemy"] = None

@@ -103,13 +103,25 @@ function createForm() {
 // Entry points
 // -----------------------------
 
+// Clears anything left over from a previous run: a live enemy, a half-finished
+// dungeon crawl, a pending overwrite prompt or the last shop. Without this, a
+// new game (or a loaded save) started while the previous run was inside the
+// dungeon would silently inherit that state - no Flee option, and the world map
+// would stay hidden.
+function resetRun() {
+    gs.enemy = null;
+    gs.dungeon_floor = 0;
+    gs.pending_save_name = null;
+    gs.shop_name = null;
+}
+
 function startGame(data) {
     const name = (data && data.name) || "Adventurer";
     const race = (data && data.race) || "Human";
     const class_name = (data && data["class"]) || "Fighter";
 
+    resetRun();
     gs.player = makeCharacter(name, race, class_name);
-    gs.enemy = null;
     gs.current_location = "town";
     gs.log = ["Welcome, adventurer!"];
     return townRespond(townName(), "What do you want to do?", gs.log);
@@ -211,9 +223,9 @@ function loadAction(choice) {
         gs.log = ["Could not load '" + name + "'."];
         return menuRespond();
     }
+    resetRun();
     player.current_save = name;
     gs.player = player;
-    gs.enemy = null;
     gs.current_location = "town";
     gs.log = ["Loaded '" + name + "'!"];
     return respond("town", "Game Loaded!", "What do you want to do?", TOWN_OPTIONS);

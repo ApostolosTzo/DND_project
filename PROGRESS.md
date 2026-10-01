@@ -919,6 +919,63 @@ The check runs **before** `spend_gold()`, so gold is never taken for an item tha
 - `js/game.js`, `game_server.py` — purchase message now reads `Bought 1 × Shield for 25g!`, plus the catalogue-drift guard
 - `sw.js` — `CACHE_VERSION` → `dnd-pwa-v4`
 
+## Flask Build Verification & Run-State Reset Fix
+
+### Does `python game_server.py` still work? Yes — verified end to end
+
+The Flask build was exercised over real HTTP against a live `py game_server.py`, not just assumed. All 29 checks passed:
+
+| Area | Checks |
+|---|---|
+| Page | `GET /` 200, template contains the new illustrated map, no PWA manifest/SW leaked into it |
+| Menu | `/state` → main_menu with **no Quit** |
+| Creation | `/create_form` reports the new base HP (15 / 13 / 11 / 13) |
+| Start | `/start` → town, payload has `enemy` and `in_dungeon` |
+| Combat | enemy payload present, combat log **appends** across exchanges |
+| Shop | real purchase logs `Bought 1 × …` and charges gold; an unlisted item is ignored and charges nothing |
+| Map | `/map_data` returns 4 locations; unreachable `/travel` refused; Village 1 reachable |
+| Dungeon | entering sets `in_dungeon: true` and spawns a live enemy |
+
+**Environment note:** the `python` on PATH here is an MSYS2 build (`C:\msys64\ucrt64\bin\python.exe`) with **no pip**, so `python game_server.py` fails with `ModuleNotFoundError: No module named 'flask'`. Flask 3.1.3 *is* installed for the Windows launcher (`py` → Python 3.14), so `py game_server.py` works — which is exactly why the README lists both forms. Install for the other one with `python -m pip install flask` (after pointing it at a real Python, e.g. `C:\Python312\python.exe -m pip install flask`).
+
+### Bug found and fixed: run state leaked between characters
+
+Testing hit a failure that turned out to be a real defect: **`/start` and the load-game handler never reset `dungeon_floor`.** Because `gs` is module-global and lives for the life of the process, starting a new character while a previous run sat inside the dungeon silently inherited it:
+
+- no **Flee** option (that is dungeon-only), 
+- the world map stayed hidden (`in_dungeon` true),
+- and death would route to the dungeon-victory screen instead of the menu.
+
+My test suite hit it because a previous run had left the server on floor 1. Fixed in both builds with a `reset_run()` / `resetRun()` called from new-game **and** load-game:
+
+```python
+def reset_run():
+    gs["enemy"] = None
+    gs["dungeon_floor"] = 0
+    gs["pending_save_name"] = None
+    gs["shop_name"] = None
+```
+
+Covered by tests in both suites: set `dungeon_floor = 7` with a live enemy, start a new game, then assert the floor is `0`, the enemy is gone and a fresh overworld fight offers Flee.
+
+### Early-game death rate, measured
+
+4,000 simulated level-1 fights against the first overworld monster, using the real combat code:
+
+| Class | Trials | Win | **Death** | Avg HP | Avg rounds | Avg potions |
+|---|---|---|---|---|---|---|
+| Fighter | 1019 | 99.4% | **0.6%** | 16.3 | 5.2 | 0.40 |
+| Cleric | 986 | 99.1% | **0.9%** | 14.3 | 6.4 | 0.39 |
+| Wizard | 1041 | 91.9% | **8.1%** | 12.2 | 6.9 | 1.27 |
+| Rogue | 954 | 91.4% | **8.6%** | 14.2 | 6.9 | 1.05 |
+| **All** | 4000 | 95.5% | **4.5%** | | | |
+
+Without drinking potions the death rate jumps to **31.1%** — the 15 starting potions are doing most of the work. Rogue and Wizard are the fragile ones: lowest base HP *and* the weakest starting weapons (Dagger `1d4`, Staff `1d6`) so fights last longer (6.9 rounds vs 5.2).
+
+The remaining risk is a bad CON roll: `CON 3` gives a −4 modifier, so a fresh character starts at Fighter 11 / Rogue 9 / Wizard 7 / Cleric 9 HP against level-1 monsters averaging 4–6 damage per hit.
+
+If you want it even safer, the cheapest options are a **minimum starting HP floor** (e.g. never below 12), or **healing to full after every overworld fight**. Neither is implemented — flagged as data, not changed.
+
 ## To Do
 - **Export / import saves** as a file (see "Saves: where they live" above) so characters can be backed up and moved between devices
 - Quest system (quest lines with objectives and rewards)
