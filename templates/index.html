@@ -139,7 +139,7 @@
         #xp-bar {
             background: #2e2e33; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
         }
-        #xp-bar div { background: #9a9aa0; height: 100%; transition: width 0.3s; }
+        #xp-bar div { background: #c9a84c; height: 100%; transition: width 0.3s; }
         #buy-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8); justify-content: center; align-items: center;
@@ -225,6 +225,44 @@ async function travel(id) {
     render(s);
 }
 
+function roadPath(a, b) {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    return "M " + a.x + " " + a.y + " Q " + (mx - dy * 0.16) + " " + (my + dx * 0.16) + " " + b.x + " " + b.y;
+}
+
+function tree(x, y, s, op) {
+    return '<g opacity="' + op + '">' +
+        '<rect x="' + (x - 1.4) + '" y="' + (y - 3) + '" width="2.8" height="7" fill="#3a2f1f"/>' +
+        '<path d="M ' + x + ' ' + (y - 20 * s) + ' L ' + (x + 9 * s) + ' ' + (y - 1) + ' L ' + (x - 9 * s) + ' ' + (y - 1) + ' Z" fill="#20402e"/>' +
+        '<path d="M ' + x + ' ' + (y - 20 * s) + ' L ' + (x + 9 * s) + ' ' + (y - 1) + ' L ' + x + ' ' + (y - 1) + ' Z" fill="#2b5741"/></g>';
+}
+
+function mountain(x, y, s, op) {
+    return '<g opacity="' + op + '">' +
+        '<path d="M ' + (x - 22 * s) + ' ' + y + ' L ' + x + ' ' + (y - 30 * s) + ' L ' + (x + 22 * s) + ' ' + y + ' Z" fill="#242430"/>' +
+        '<path d="M ' + (x - 7 * s) + ' ' + (y - 16 * s) + ' L ' + x + ' ' + (y - 30 * s) + ' L ' + (x + 7 * s) + ' ' + (y - 16 * s) + ' Z" fill="#d8d8d6" opacity=".75"/></g>';
+}
+
+function nodeGlyph(type) {
+    if (type === "town") {
+        return '<g fill="#0b0b0c">' +
+            '<rect x="-8" y="-4" width="5.5" height="10"/>' +
+            '<rect x="2.5" y="-4" width="5.5" height="10"/>' +
+            '<rect x="-3" y="-1" width="6" height="7"/>' +
+            '<rect x="-9.5" y="-7" width="2" height="3"/><rect x="-6.5" y="-7" width="2" height="3"/>' +
+            '<rect x="1.5" y="-7" width="2" height="3"/><rect x="4.5" y="-7" width="2" height="3"/></g>';
+    }
+    if (type === "village") {
+        return '<g fill="#0b0b0c">' +
+            '<path d="M 0 -8 L 8 0 L -8 0 Z"/>' +
+            '<rect x="-5" y="0" width="10" height="6"/>' +
+            '<rect x="-1.4" y="2" width="2.8" height="4" fill="#2fbf71"/></g>';
+    }
+    return '<g><path d="M -7 6 v-7 a7 7 0 0 1 14 0 v7 Z" fill="#0b0b0c"/>' +
+        '<circle cx="-2.6" cy="0" r="1.5" fill="#e74c3c"/><circle cx="2.6" cy="0" r="1.5" fill="#e74c3c"/></g>';
+}
+
 function drawMap(currentId) {
     const container = document.getElementById("map-container");
     if (!mapLocations || !currentId || !mapLocations[currentId]) {
@@ -233,7 +271,51 @@ function drawMap(currentId) {
     }
     const locs = mapLocations;
     const current = locs[currentId];
-    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#151517" rx="4"/>`;
+    const FILL = { town: "#c9a84c", village: "#2fbf71", dungeon: "#c0392b" };
+    const STROKE = { town: "#dbb95c", village: "#5fd39a", dungeon: "#e74c3c" };
+    const reachable = (id) => id === currentId || current.connects_to.indexOf(id) !== -1;
+
+    let svg = '<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World map">';
+    svg += "<style>" +
+        ".mn{transition:transform .18s ease;transform-box:fill-box;transform-origin:center}" +
+        ".mn:hover{transform:scale(1.18)}" +
+        ".mlabel{font-family:'Courier New',monospace;font-size:11px}" +
+        "</style>";
+    svg += '<defs>' +
+        '<linearGradient id="sky" x1="0" y1="0" x2="0.3" y2="1">' +
+            '<stop offset="0" stop-color="#0d0d10"/><stop offset="1" stop-color="#17171c"/></linearGradient>' +
+        '<radialGradient id="vig" cx="0.5" cy="0.45" r="0.75">' +
+            '<stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>' +
+        '<filter id="glow" x="-70%" y="-70%" width="240%" height="240%">' +
+            '<feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+        "</defs>";
+
+    svg += '<rect width="520" height="360" fill="url(#sky)" rx="6"/>';
+
+    // --- scenery: hills, forest, river, mountains ---
+    svg += '<g opacity="0.5">' +
+        '<ellipse cx="150" cy="250" rx="130" ry="60" fill="#151a16"/>' +
+        '<ellipse cx="400" cy="120" rx="150" ry="70" fill="#151a16"/>' +
+        '<ellipse cx="470" cy="330" rx="120" ry="50" fill="#1c1418"/></g>';
+
+    svg += '<path d="M -12 58 C 70 92, 120 128, 176 196 S 268 292, 352 322 S 470 348, 540 332" ' +
+        'stroke="#123b39" stroke-width="15" fill="none" stroke-linecap="round" opacity="0.55"/>' +
+        '<path d="M -12 58 C 70 92, 120 128, 176 196 S 268 292, 352 322 S 470 348, 540 332" ' +
+        'stroke="#2fbf71" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.28"/>';
+
+    svg += '<g>' +
+        tree(300, 300, 0.85, 0.9) + tree(318, 314, 0.7, 0.8) + tree(286, 318, 0.75, 0.8) +
+        tree(352, 262, 0.6, 0.7) + tree(268, 268, 0.55, 0.65) +
+        tree(402, 92, 0.8, 0.85) + tree(428, 76, 0.65, 0.75) + tree(446, 104, 0.7, 0.8) +
+        tree(140, 300, 0.7, 0.7) + tree(120, 258, 0.6, 0.6) +
+        "</g>";
+
+    svg += '<g>' +
+        mountain(486, 300, 1, 0.95) + mountain(444, 322, 0.75, 0.85) + mountain(516, 286, 0.7, 0.8) +
+        mountain(462, 250, 0.55, 0.6) +
+        "</g>";
+
+    // --- roads ---
     const drawn = new Set();
     for (const [id, loc] of Object.entries(locs)) {
         for (const target of loc.connects_to) {
@@ -241,108 +323,66 @@ function drawMap(currentId) {
             if (drawn.has(key)) continue;
             drawn.add(key);
             const t = locs[target];
-            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#3a3a40" stroke-width="2"/>`;
+            if (!t) continue;
+            const on = reachable(id) && reachable(target);
+            const op = on ? 1 : 0.3;
+            svg += '<path d="' + roadPath(loc, t) + '" stroke="#0b0b0c" stroke-width="8" fill="none" opacity="' + (op * 0.7) + '" stroke-linecap="round"/>';
+            svg += '<path d="' + roadPath(loc, t) + '" stroke="#c9a84c" stroke-width="2.5" fill="none" opacity="' + op +
+                '" stroke-dasharray="2 7" stroke-linecap="round"/>';
         }
     }
+
+    // --- nodes ---
     for (const [id, loc] of Object.entries(locs)) {
         const isCurrent = id === currentId;
-        const isConnected = current.connects_to.includes(id);
-        const canReach = isCurrent || isConnected;
-        const opacity = canReach ? 1 : 0.35;
-        const r = isCurrent ? 12 : 7;
-        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#2fbf71";
-        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
+        const canReach = reachable(id);
+        const op = canReach ? 1 : 0.32;
+        const r = isCurrent ? 11 : 9;
+        const fill = FILL[loc.type] || "#8a8a8a";
+        const stroke = STROKE[loc.type] || "#8a8a8a";
+        const labelY = loc.y < 200 ? loc.y - 20 : loc.y + 26;
+        const pillW = loc.name.length * 6.7 + 14;
+
         if (isCurrent) {
-            svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
+            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="18" fill="none" stroke="' + fill + '" stroke-width="2" opacity="0.45">' +
+                '<animate attributeName="r" values="12;20;12" dur="2.4s" repeatCount="indefinite"/>' +
+                '<animate attributeName="opacity" values="0.45;0.05;0.45" dur="2.4s" repeatCount="indefinite"/></circle>';
         }
-        const clickable = isConnected && !isCurrent;
-        svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}"${clickable ? ' style="cursor:pointer" onclick="travel(\'' + id + '\')"' : ""}/>`;
-        const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
-        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
-        svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
+
+        // generous invisible hit area, easy to tap on a phone
+        if (canReach && !isCurrent) {
+            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 12) + '" fill="transparent" style="cursor:pointer" ' +
+                'onclick="travel(\'' + id + '\')"><title>Travel to ' + loc.name + "</title></circle>";
+        }
+
+        svg += '<g class="mn" opacity="' + op + '">';
+        if (isCurrent) svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 4) + '" fill="' + fill + '" opacity="0.18"/>';
+        svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + r + '" fill="' + fill + '" stroke="' + stroke +
+            '" stroke-width="2"' + (isCurrent ? ' filter="url(#glow)"' : "") + "/>";
+        svg += '<g transform="translate(' + loc.x + ',' + (loc.y + 0.5) + ') scale(0.62)">' + nodeGlyph(loc.type) + "</g>";
+        svg += '<rect x="' + (loc.x - pillW / 2) + '" y="' + (labelY - 11) + '" width="' + pillW + '" height="16" rx="8" fill="#0b0b0c" opacity="0.82"/>';
+        svg += '<text class="mlabel" x="' + loc.x + '" y="' + labelY + '" text-anchor="middle" fill="' + stroke + '" opacity="' + op + '">' + loc.name + "</text>";
+        svg += "</g>";
     }
-    svg += `<text x="12" y="22" fill="#9a9aa0" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
+
+    svg += '<rect width="520" height="360" fill="url(#vig)" pointer-events="none" rx="6"/>';
+
+    // --- caption + legend ---
+    svg += '<g><rect x="10" y="10" width="182" height="40" rx="6" fill="#0b0b0c" opacity="0.8"/>' +
+        '<text x="20" y="27" font-family="' + "'Courier New',monospace" + '" font-size="12" fill="#c9a84c">You are at: ' + current.name + "</text>" +
+        '<text x="20" y="42" font-family="' + "'Courier New',monospace" + '" font-size="10" fill="#8a8a8a">Tap a lit marker to travel</text></g>';
+
+    const legend = [["Town", "#c9a84c"], ["Village", "#2fbf71"], ["Dungeon", "#c0392b"]];
+    let lg = '<g><rect x="10" y="316" width="180" height="32" rx="6" fill="#0b0b0c" opacity="0.85"/>';
+    legend.forEach((l, i) => {
+        lg += '<circle cx="' + (26 + i * 58) + '" cy="332" r="5" fill="' + l[1] + '"/>' +
+            '<text x="' + (36 + i * 58) + '" y="336" font-family="' + "'Courier New',monospace" + '" font-size="10" fill="#d6d6d6">' + l[0] + "</text>";
+    });
+    lg += "</g>";
+    svg += lg;
+
     svg += "</svg>";
     container.innerHTML = svg;
-}
-
-async function fetchState() {
-    const r = await fetch("/state");
-    const s = await r.json();
-    render(s);
-}
-
-async function doAction(choice) {
-    const r = await fetch("/action", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({choice})
-    });
-    const s = await r.json();
-    render(s);
-}
-
-async function doSave(name) {
-    const r = await fetch("/save", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({name})
-    });
-    const s = await r.json();
-    render(s);
-}
-
-async function doForceSave() {
-    const r = await fetch("/force_save", { method: "POST" });
-    const s = await r.json();
-    render(s);
-}
-
-async function doLoadList() {
-    const r = await fetch("/load_list");
-    const s = await r.json();
-    render(s);
-}
-
-async function doStart(data) {
-    const r = await fetch("/start", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(data)
-    });
-    const s = await r.json();
-    render(s);
-}
-
-async function doShopBuy(item, qty) {
-    const r = await fetch("/shop_buy", {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({item, qty})
-    });
-    const s = await r.json();
-    render(s);
-}
-
-async function showCreateForm() {
-    const r = await fetch("/create_form");
-    const d = await r.json();
-    raceData = d.races;
-    classData = d.classes;
-
-    document.getElementById("screen-title").textContent = "CREATE CHARACTER";
-    let html = '<div id="create-form">';
-    html += '<label>Name</label><input type="text" id="char-name" value="Adventurer">';
-    html += '<label>Race</label><select id="char-race" onchange="updateInfoBox()">';
-    d.races.forEach(r => html += `<option value="${r[0]}">${r[1]}</option>`);
-    html += '</select>';
-    html += '<label>Class</label><select id="char-class" onchange="updateInfoBox()">';
-    d.classes.forEach(c => html += `<option value="${c[0]}">${c[1]}</option>`);
-    html += '</select>';
-    html += '<div id="info-box"></div>';
-    html += '<button onclick="submitCreate()">Begin Adventure</button>';
-    html += '</div>';
-    document.getElementById("screen-body").innerHTML = html;
-    document.getElementById("options").innerHTML = "";
-    document.getElementById("log").innerHTML = "";
-    updateInfoBox();
 }
 
 function updateInfoBox() {

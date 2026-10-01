@@ -15,7 +15,9 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 - **Stat effects** — STR (melee damage), DEX (ranged/finesse damage + AC), CON (max HP), INT/WIS/CHA (placeholder)
 - **Equipment with stat bonuses** — weapons and armor can boost STR/DEX/CON/INT, affecting damage, AC, and HP
 - **AC calculation** — light (DEX), medium (DEX capped at 2), heavy (no DEX), shield (+2)
-- **NPC shops** — 5 NPCs: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard; availability varies by location
+- **NPC shops** — 5 NPCs: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard; availability varies by location. Tap an item to expand an inline panel showing what it gives you (damage, properties, stat bonuses, AC change) with a one-tap **Buy** button
+- **Interactive world map** — an illustrated map with forests, mountains, a river and curved roads; clickable nodes to travel between Town, Village 1, Village 2, and Dungeon
+- **Monster portraits** — original hand-drawn SVG for all 9 monsters; they lurch when hit and distort as they lose HP
 - **30+ items** — weapons, armors, shields, potions, scrolls, magical items
 - **Interactive world map** — clickable nodes to travel between Town, Village 1, Village 2, and Dungeon
 - **10-floor dungeon** — progressive enemy scaling, potion merchant on floor 5, boss fight on floor 10

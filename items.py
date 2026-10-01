@@ -71,6 +71,11 @@ ITEMS = {
     
     # Shields
     "Shield": Armor("Shield", 2, "shield"),
+    "Iron Shield": Armor("Iron Shield", 3, "shield", stats_bonus={"STR": 1, "DEX": 3}),
+    "Tower Shield": Armor("Tower Shield", 4, "shield", stats_bonus={"STR": 2, "DEX": 2}),
+    "Magic Shield": Armor("Magic Shield", 5, "shield", stats_bonus={"INT": 2, "WIS": 2}),
+    "Dragon Shield": Armor("Dragon Shield", 6, "shield", stats_bonus={"STR": 4, "DEX": 4, "CON": 4}),
+    "Aegis Shield": Armor("Aegis Shield", 7, "shield", stats_bonus={"STR": 5, "DEX": 5, "CON": 5}),
     
     # Special armor
     "Wizard Robe": Armor("Wizard Robe", 10, "light", properties=["magic"], stats_bonus={"INT": 9}),

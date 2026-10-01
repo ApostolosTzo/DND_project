@@ -104,6 +104,42 @@
             background: #2a2a2e;
             box-shadow: inset 4px 0 0 #c9a84c;
         }
+        /* ---------- Shop: inline item panel ---------- */
+        #options.shop { gap: 4px; }
+        .shop-gold {
+            color: #c9a84c; font-size: 0.85em; padding: 2px 4px 8px;
+            border-bottom: 1px solid #2e2e33; margin-bottom: 6px;
+        }
+        .shop-row { display: flex; flex-direction: column; }
+        .shop-item { width: 100%; }
+        .shop-detail {
+            background: #151517;
+            border: 1px solid #2e2e33;
+            border-left: 3px solid #c9a84c;
+            border-radius: 0 6px 6px 0;
+            padding: 12px 14px;
+            margin: -2px 0 6px 4px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+        .shop-detail-info { flex: 1; min-width: 150px; }
+        .shop-detail-name { color: #c9a84c; margin-bottom: 6px; }
+        .shop-detail dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; }
+        .shop-detail dt { color: #8a8a8a; font-size: 0.85em; }
+        .shop-detail dd { margin: 0; color: #d6d6d6; font-size: 0.85em; }
+        .shop-detail .good { color: #5fd39a; }
+        .shop-detail .flavour { color: #8a8a8a; font-size: 0.8em; margin: 6px 0 0; }
+        .shop-buy {
+            background: #c9a84c; color: #0b0b0c; border: none;
+            padding: 10px 22px; font-family: 'Courier New', monospace; font-size: 0.95em;
+            cursor: pointer; border-radius: 4px; min-height: 42px;
+            transition: 0.2s; touch-action: manipulation;
+            align-self: flex-end;
+        }
+        .shop-buy:hover { background: #dbb95c; }
+        .shop-buy:disabled { background: #2e2e33; color: #8a8a8a; cursor: not-allowed; }
         .hint { color: #6a6a70; font-size: 0.72em; margin-top: 8px; text-align: right; }
         #log {
             margin-top: 15px;
@@ -341,6 +377,44 @@ function travel(id) {
     render(Game.travel(id));
 }
 
+function roadPath(a, b) {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    return "M " + a.x + " " + a.y + " Q " + (mx - dy * 0.16) + " " + (my + dx * 0.16) + " " + b.x + " " + b.y;
+}
+
+function tree(x, y, s, op) {
+    return '<g opacity="' + op + '">' +
+        '<rect x="' + (x - 1.4) + '" y="' + (y - 3) + '" width="2.8" height="7" fill="#3a2f1f"/>' +
+        '<path d="M ' + x + ' ' + (y - 20 * s) + ' L ' + (x + 9 * s) + ' ' + (y - 1) + ' L ' + (x - 9 * s) + ' ' + (y - 1) + ' Z" fill="#20402e"/>' +
+        '<path d="M ' + x + ' ' + (y - 20 * s) + ' L ' + (x + 9 * s) + ' ' + (y - 1) + ' L ' + x + ' ' + (y - 1) + ' Z" fill="#2b5741"/></g>';
+}
+
+function mountain(x, y, s, op) {
+    return '<g opacity="' + op + '">' +
+        '<path d="M ' + (x - 22 * s) + ' ' + y + ' L ' + x + ' ' + (y - 30 * s) + ' L ' + (x + 22 * s) + ' ' + y + ' Z" fill="#242430"/>' +
+        '<path d="M ' + (x - 7 * s) + ' ' + (y - 16 * s) + ' L ' + x + ' ' + (y - 30 * s) + ' L ' + (x + 7 * s) + ' ' + (y - 16 * s) + ' Z" fill="#d8d8d6" opacity=".75"/></g>';
+}
+
+function nodeGlyph(type) {
+    if (type === "town") {
+        return '<g fill="#0b0b0c">' +
+            '<rect x="-8" y="-4" width="5.5" height="10"/>' +
+            '<rect x="2.5" y="-4" width="5.5" height="10"/>' +
+            '<rect x="-3" y="-1" width="6" height="7"/>' +
+            '<rect x="-9.5" y="-7" width="2" height="3"/><rect x="-6.5" y="-7" width="2" height="3"/>' +
+            '<rect x="1.5" y="-7" width="2" height="3"/><rect x="4.5" y="-7" width="2" height="3"/></g>';
+    }
+    if (type === "village") {
+        return '<g fill="#0b0b0c">' +
+            '<path d="M 0 -8 L 8 0 L -8 0 Z"/>' +
+            '<rect x="-5" y="0" width="10" height="6"/>' +
+            '<rect x="-1.4" y="2" width="2.8" height="4" fill="#2fbf71"/></g>';
+    }
+    return '<g><path d="M -7 6 v-7 a7 7 0 0 1 14 0 v7 Z" fill="#0b0b0c"/>' +
+        '<circle cx="-2.6" cy="0" r="1.5" fill="#e74c3c"/><circle cx="2.6" cy="0" r="1.5" fill="#e74c3c"/></g>';
+}
+
 function drawMap(currentId) {
     const container = document.getElementById("map-container");
     if (!mapLocations || !currentId || !mapLocations[currentId]) {
@@ -349,7 +423,51 @@ function drawMap(currentId) {
     }
     const locs = mapLocations;
     const current = locs[currentId];
-    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#151517" rx="4"/>`;
+    const FILL = { town: "#c9a84c", village: "#2fbf71", dungeon: "#c0392b" };
+    const STROKE = { town: "#dbb95c", village: "#5fd39a", dungeon: "#e74c3c" };
+    const reachable = (id) => id === currentId || current.connects_to.indexOf(id) !== -1;
+
+    let svg = '<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World map">';
+    svg += "<style>" +
+        ".mn{transition:transform .18s ease;transform-box:fill-box;transform-origin:center}" +
+        ".mn:hover{transform:scale(1.18)}" +
+        ".mlabel{font-family:'Courier New',monospace;font-size:11px}" +
+        "</style>";
+    svg += '<defs>' +
+        '<linearGradient id="sky" x1="0" y1="0" x2="0.3" y2="1">' +
+            '<stop offset="0" stop-color="#0d0d10"/><stop offset="1" stop-color="#17171c"/></linearGradient>' +
+        '<radialGradient id="vig" cx="0.5" cy="0.45" r="0.75">' +
+            '<stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>' +
+        '<filter id="glow" x="-70%" y="-70%" width="240%" height="240%">' +
+            '<feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+        "</defs>";
+
+    svg += '<rect width="520" height="360" fill="url(#sky)" rx="6"/>';
+
+    // --- scenery: hills, forest, river, mountains ---
+    svg += '<g opacity="0.5">' +
+        '<ellipse cx="150" cy="250" rx="130" ry="60" fill="#151a16"/>' +
+        '<ellipse cx="400" cy="120" rx="150" ry="70" fill="#151a16"/>' +
+        '<ellipse cx="470" cy="330" rx="120" ry="50" fill="#1c1418"/></g>';
+
+    svg += '<path d="M -12 58 C 70 92, 120 128, 176 196 S 268 292, 352 322 S 470 348, 540 332" ' +
+        'stroke="#123b39" stroke-width="15" fill="none" stroke-linecap="round" opacity="0.55"/>' +
+        '<path d="M -12 58 C 70 92, 120 128, 176 196 S 268 292, 352 322 S 470 348, 540 332" ' +
+        'stroke="#2fbf71" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.28"/>';
+
+    svg += '<g>' +
+        tree(300, 300, 0.85, 0.9) + tree(318, 314, 0.7, 0.8) + tree(286, 318, 0.75, 0.8) +
+        tree(352, 262, 0.6, 0.7) + tree(268, 268, 0.55, 0.65) +
+        tree(402, 92, 0.8, 0.85) + tree(428, 76, 0.65, 0.75) + tree(446, 104, 0.7, 0.8) +
+        tree(140, 300, 0.7, 0.7) + tree(120, 258, 0.6, 0.6) +
+        "</g>";
+
+    svg += '<g>' +
+        mountain(486, 300, 1, 0.95) + mountain(444, 322, 0.75, 0.85) + mountain(516, 286, 0.7, 0.8) +
+        mountain(462, 250, 0.55, 0.6) +
+        "</g>";
+
+    // --- roads ---
     const drawn = new Set();
     for (const [id, loc] of Object.entries(locs)) {
         for (const target of loc.connects_to) {
@@ -357,31 +475,64 @@ function drawMap(currentId) {
             if (drawn.has(key)) continue;
             drawn.add(key);
             const t = locs[target];
-            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#3a3a40" stroke-width="2"/>`;
+            if (!t) continue;
+            const on = reachable(id) && reachable(target);
+            const op = on ? 1 : 0.3;
+            svg += '<path d="' + roadPath(loc, t) + '" stroke="#0b0b0c" stroke-width="8" fill="none" opacity="' + (op * 0.7) + '" stroke-linecap="round"/>';
+            svg += '<path d="' + roadPath(loc, t) + '" stroke="#c9a84c" stroke-width="2.5" fill="none" opacity="' + op +
+                '" stroke-dasharray="2 7" stroke-linecap="round"/>';
         }
     }
+
+    // --- nodes ---
     for (const [id, loc] of Object.entries(locs)) {
         const isCurrent = id === currentId;
-        const isConnected = current.connects_to.includes(id);
-        const canReach = isCurrent || isConnected;
-        const opacity = canReach ? 1 : 0.35;
-        const r = isCurrent ? 12 : 7;
-        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#2fbf71";
-        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
+        const canReach = reachable(id);
+        const op = canReach ? 1 : 0.32;
+        const r = isCurrent ? 11 : 9;
+        const fill = FILL[loc.type] || "#8a8a8a";
+        const stroke = STROKE[loc.type] || "#8a8a8a";
+        const labelY = loc.y < 200 ? loc.y - 20 : loc.y + 26;
+        const pillW = loc.name.length * 6.7 + 14;
+
         if (isCurrent) {
-            svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
+            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="18" fill="none" stroke="' + fill + '" stroke-width="2" opacity="0.45">' +
+                '<animate attributeName="r" values="12;20;12" dur="2.4s" repeatCount="indefinite"/>' +
+                '<animate attributeName="opacity" values="0.45;0.05;0.45" dur="2.4s" repeatCount="indefinite"/></circle>';
         }
-        const clickable = isConnected && !isCurrent;
-        if (clickable) {
-            // A generous invisible hit area, so the node is easy to tap on a phone.
-            svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r + 11}" fill="transparent" style="cursor:pointer" onclick="travel('${id}')"><title>Travel to ${loc.name}</title></circle>`;
+
+        // generous invisible hit area, easy to tap on a phone
+        if (canReach && !isCurrent) {
+            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 12) + '" fill="transparent" style="cursor:pointer" ' +
+                'onclick="travel(\'' + id + '\')"><title>Travel to ' + loc.name + "</title></circle>";
         }
-        svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}" pointer-events="none"><title>${loc.name}</title></circle>`;
-        const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
-        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
-        svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
+
+        svg += '<g class="mn" opacity="' + op + '">';
+        if (isCurrent) svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 4) + '" fill="' + fill + '" opacity="0.18"/>';
+        svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + r + '" fill="' + fill + '" stroke="' + stroke +
+            '" stroke-width="2"' + (isCurrent ? ' filter="url(#glow)"' : "") + "/>";
+        svg += '<g transform="translate(' + loc.x + ',' + (loc.y + 0.5) + ') scale(0.62)">' + nodeGlyph(loc.type) + "</g>";
+        svg += '<rect x="' + (loc.x - pillW / 2) + '" y="' + (labelY - 11) + '" width="' + pillW + '" height="16" rx="8" fill="#0b0b0c" opacity="0.82"/>';
+        svg += '<text class="mlabel" x="' + loc.x + '" y="' + labelY + '" text-anchor="middle" fill="' + stroke + '" opacity="' + op + '">' + loc.name + "</text>";
+        svg += "</g>";
     }
-    svg += `<text x="12" y="22" fill="#9a9aa0" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
+
+    svg += '<rect width="520" height="360" fill="url(#vig)" pointer-events="none" rx="6"/>';
+
+    // --- caption + legend ---
+    svg += '<g><rect x="10" y="10" width="182" height="40" rx="6" fill="#0b0b0c" opacity="0.8"/>' +
+        '<text x="20" y="27" font-family="' + "'Courier New',monospace" + '" font-size="12" fill="#c9a84c">You are at: ' + current.name + "</text>" +
+        '<text x="20" y="42" font-family="' + "'Courier New',monospace" + '" font-size="10" fill="#8a8a8a">Tap a lit marker to travel</text></g>';
+
+    const legend = [["Town", "#c9a84c"], ["Village", "#2fbf71"], ["Dungeon", "#c0392b"]];
+    let lg = '<g><rect x="10" y="316" width="180" height="32" rx="6" fill="#0b0b0c" opacity="0.85"/>';
+    legend.forEach((l, i) => {
+        lg += '<circle cx="' + (26 + i * 58) + '" cy="332" r="5" fill="' + l[1] + '"/>' +
+            '<text x="' + (36 + i * 58) + '" y="336" font-family="' + "'Courier New',monospace" + '" font-size="10" fill="#d6d6d6">' + l[0] + "</text>";
+    });
+    lg += "</g>";
+    svg += lg;
+
     svg += "</svg>";
     container.innerHTML = svg;
 }
@@ -503,13 +654,21 @@ const MONSTER_ART = {
         <path d="M50 62 L58 66 M70 62 L62 66" stroke="#c0392b" stroke-width="3" stroke-linecap="round"/>
     </g>`,
     "Wolf": `<g>
-        <ellipse cx="60" cy="106" rx="32" ry="6" fill="#33333a" opacity=".35"/>
-        <path d="M60 60 C38 60 34 36 44 24 L52 40 L60 32 L68 40 L76 24 C86 36 82 60 60 60 z" fill="#8a8f99"/>
-        <path d="M44 24 L48 38 L52 30 z M76 24 L72 38 L68 30 z" fill="#5c5f68"/>
-        <ellipse cx="60" cy="66" rx="13" ry="10" fill="#6b707a"/>
-        <path d="M56 74 L64 74 L60 82 z" fill="#2b2b33"/>
-        <circle cx="52" cy="46" r="4" fill="#f1c40f"/><circle cx="68" cy="46" r="4" fill="#f1c40f"/>
-        <path d="M60 46 v8" stroke="#3a3a42" stroke-width="2"/>
+        <ellipse cx="58" cy="112" rx="42" ry="6" fill="#33333a" opacity=".55"/>
+        <path d="M18 60 C10 38 20 22 32 20 L30 40 L40 28 L48 40 L60 22 C74 26 84 42 78 60 Z" fill="#6f7681"/>
+        <path d="M18 60 C12 42 20 26 30 22 L26 42 Z" fill="#474c55"/>
+        <path d="M78 60 C86 42 78 26 66 22 L70 42 Z" fill="#474c55"/>
+        <path d="M60 22 C72 26 80 40 76 56 L68 38 Z" fill="#8d95a2"/>
+        <path d="M32 20 L34 36 L41 26 Z" fill="#33373e"/>
+        <path d="M48 24 L46 38 L53 30 Z" fill="#33373e"/>
+        <path d="M34 56 C42 66 58 68 70 56 C80 62 84 72 78 82 C70 96 42 98 30 84 C22 72 26 62 34 56 Z" fill="#7d8590"/>
+        <path d="M38 70 C46 78 66 78 74 70 C70 90 42 92 38 70 Z" fill="#949ca8"/>
+        <ellipse cx="56" cy="98" rx="14" ry="11" fill="#2b2f36"/>
+        <ellipse cx="56" cy="93" rx="9" ry="6" fill="#17191e"/>
+        <path d="M50 106 L56 114 L62 106 Z" fill="#101216"/>
+        <path d="M40 58 l14 -5 l-13 10 z M70 58 l-14 -5 l13 10 z" fill="#f1c40f"/>
+        <path d="M43 86 L50 86 L48 95 Z M62 86 L69 86 L67 95 Z" fill="#f4f4f0"/>
+        <path d="M22 72 L6 80 M80 72 L96 80" stroke="#6f7681" stroke-width="7" stroke-linecap="round" opacity=".5"/>
     </g>`,
     "Goblin": `<g>
         <ellipse cx="60" cy="106" rx="26" ry="5" fill="#33333a" opacity=".35"/>
@@ -543,14 +702,24 @@ const MONSTER_ART = {
         <path d="M40 70 L18 84 M80 70 L102 84" stroke="#c0392b" stroke-width="8" stroke-linecap="round"/>
     </g>`,
     "Elder Dragon": `<g>
-        <ellipse cx="60" cy="108" rx="42" ry="7" fill="#33333a" opacity=".4"/>
-        <path d="M30 44 C14 26 22 8 36 18 L48 34 z M90 44 C106 26 98 8 84 18 L72 34 z" fill="#7d6608"/>
-        <path d="M34 62 C34 38 86 38 86 62 C86 82 74 94 60 94 C46 94 34 82 34 62 z" fill="#7f8c29"/>
-        <circle cx="50" cy="58" r="6" fill="#f1c40f"/><circle cx="70" cy="58" r="6" fill="#f1c40f"/>
-        <circle cx="50" cy="58" r="2" fill="#0b0b0c"/><circle cx="70" cy="58" r="2" fill="#0b0b0c"/>
-        <path d="M40 76 h40 l-6 10 h-28 z" fill="#f5f5dc" opacity=".9"/>
-        <path d="M46 76 l4 10 l4 -10 z M58 76 l4 10 l4 -10 z M70 76 l4 10 l4 -10 z" fill="#fff"/>
-        <path d="M34 66 L14 78 M86 66 L106 78" stroke="#7f8c29" stroke-width="8" stroke-linecap="round"/>
+        <ellipse cx="58" cy="114" rx="46" ry="7" fill="#33333a" opacity=".6"/>
+        <path d="M30 40 C12 22 18 4 34 14 L46 32 Z M88 40 C106 22 100 4 84 14 L72 32 Z" fill="#6b5a08"/>
+        <path d="M30 40 C20 26 22 14 32 16 L44 32 Z" fill="#8a7420"/>
+        <path d="M30 34 C42 28 54 30 60 38 C68 30 80 30 92 36 L86 52 C74 48 66 48 60 54 C52 48 44 48 34 52 Z" fill="#8a9a3a"/>
+        <path d="M28 52 C28 32 92 32 92 52 C92 76 76 92 60 92 C44 92 28 76 28 52 Z" fill="#6f7f24"/>
+        <path d="M28 52 C34 40 50 34 60 34 C70 34 86 40 92 52 C84 44 70 40 60 40 C50 40 36 44 28 52 Z" fill="#93a63e"/>
+        <path d="M36 56 C36 48 84 48 84 56 C84 74 74 88 60 88 C46 88 36 74 36 56 Z" fill="#7f8f2c"/>
+        <path d="M42 62 C46 56 74 56 78 62 C74 70 70 74 60 74 C50 74 46 70 42 62 Z" fill="#5f6c1c"/>
+        <path d="M34 68 C36 78 44 86 60 86 C76 86 84 78 86 68 C84 82 74 92 60 92 C46 92 36 82 34 68 Z" fill="#e8e4cf"/>
+        <path d="M40 74 l5 11 l4 -10 Z M52 78 l5 12 l4 -12 Z M64 78 l5 12 l4 -12 Z M76 74 l5 11 l4 -10 Z" fill="#fdfdf6"/>
+        <path d="M42 58 l13 -5 l-12 11 z M78 58 l-13 -5 l12 11 z" fill="#ffd633"/>
+        <path d="M42 58 l13 -5 l-12 11 z M78 58 l-13 -5 l12 11 z" fill="none" stroke="#7a5c00" stroke-width="1.4"/>
+        <circle cx="48" cy="56" r="2.2" fill="#3a2c00"/><circle cx="72" cy="56" r="2.2" fill="#3a2c00"/>
+        <path d="M50 46 C54 42 66 42 70 46" stroke="#5f6c1c" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <circle cx="50" cy="49" r="1.6" fill="#8a9a3a"/><circle cx="70" cy="49" r="1.6" fill="#8a9a3a"/>
+        <path d="M52 78 C56 84 64 84 68 78" stroke="#c9c3a4" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <path d="M28 62 L8 74 M92 62 L112 74" stroke="#6f7f24" stroke-width="7" stroke-linecap="round"/>
+        <path d="M22 66 C14 60 10 66 14 72 M98 66 C106 60 110 66 106 72" stroke="#5f6c1c" stroke-width="4" fill="none" stroke-linecap="round"/>
     </g>`,
     "_default": `<g>
         <ellipse cx="60" cy="106" rx="30" ry="6" fill="#33333a" opacity=".35"/>
@@ -621,7 +790,7 @@ function clickOption(index) {
 }
 
 function moveSelection(step) {
-    const btns = document.querySelectorAll("#options button");
+    const btns = document.querySelectorAll("#options button[data-opt]");
     if (!btns.length) return;
     selectedIndex = (selectedIndex + step + btns.length) % btns.length;
     btns.forEach(function (b, i) { b.classList.toggle("selected", i === selectedIndex); });
@@ -647,10 +816,184 @@ document.addEventListener("keydown", function (ev) {
     }
 });
 
+// -----------------------------
+// Shop list with inline item details
+// Clicking an item expands a panel under it; "Buy" is always exactly one item
+// (no quantity prompt) and the purchase is echoed into the chat log.
+// -----------------------------
+
+let openShopItem = null;
+
+function itemStatRows(name) {
+    const it = ITEMS[name];
+    if (!it) return [];
+    const rows = [];
+
+    if (it.category === "weapon") {
+        rows.push(["Damage", it.damage_dice + " " + String(it.damage_type).replace(/_/g, " ")]);
+        if (it.properties && it.properties.length) {
+            rows.push(["Properties", it.properties.join(", ")]);
+        }
+    } else if (it.category === "armor") {
+        const kind = it.armor_type === "shield" ? "shield" : it.armor_type + " armour";
+        rows.push(["Armour", it.base_ac + " AC · " + kind]);
+    } else {
+        rows.push(["Effect", it.description || it.effect || "—"]);
+    }
+
+    const bonus = Object.keys(it.stats_bonus || {});
+    if (bonus.length) {
+        rows.push(["Stat bonus", bonus.map((k) => k + " +" + it.stats_bonus[k]).join(", ")]);
+    }
+    return rows;
+}
+
+// Works out the AC the player would have while wearing `item`, using the same
+// formula as Player.calc_ac() so the preview can never lie.
+function acPreview(player, item) {
+    if (!player || !item) return null;
+    const gear = { weapon: player.weapon, armor: player.armor, shield: player.shield };
+    if (item.category === "armor") {
+        if (item.armor_type === "shield") gear.shield = item;
+        else gear.armor = item;
+    } else if (item.category === "weapon") {
+        gear.weapon = item;
+    }
+
+    const bonus = {};
+    ["weapon", "armor", "shield"].forEach((slot) => {
+        const it = gear[slot];
+        if (it) {
+            for (const st in it.stats_bonus) bonus[st] = (bonus[st] || 0) + it.stats_bonus[st];
+        }
+    });
+    const dexMod = Math.floor((player.stats.DEX + (bonus.DEX || 0) - 10) / 2);
+
+    let ac;
+    if (gear.armor) {
+        ac = gear.armor.base_ac;
+        if (gear.armor.armor_type === "light") ac += dexMod;
+        else if (gear.armor.armor_type === "medium") ac += Math.min(dexMod, 2);
+    } else {
+        ac = 10 + dexMod;
+    }
+    if (gear.shield) ac += gear.shield.base_ac;
+    return ac;
+}
+
+function shopDetailHtml(name, price, player) {
+    const it = ITEMS[name];
+    const rows = itemStatRows(name);
+    let extra = "";
+
+    if (it && player) {
+        if (it.category === "armor" || it.category === "weapon") {
+            const now = player.ac;
+            const then = acPreview(player, it);
+            if (then !== null && then !== now) {
+                const better = then > now;
+                extra += '<p class="flavour">AC ' + now +
+                    ' <span class="' + (better ? "good" : "") + '">→ ' + then + "</span>" +
+                    (better ? " (+" + (then - now) + ")" : " (" + (then - now) + ")") + "</p>";
+            } else {
+                extra += '<p class="flavour">AC stays ' + now + "</p>";
+            }
+        }
+    }
+    if (it && it.category === "item") {
+        extra += '<p class="flavour">Use it from your inventory, or straight from combat.</p>';
+    }
+
+    return '<div class="shop-detail-info">' +
+        '<div class="shop-detail-name">' + name + " — " + price + "g</div>" +
+        "<dl>" + rows.map((r) => "<dt>" + r[0] + "</dt><dd>" + r[1] + "</dd>").join("") + "</dl>" +
+        extra +
+        "</div>";
+}
+
+function renderOptions(s) {
+    const opts = document.getElementById("options");
+    opts.innerHTML = "";
+    opts.classList.toggle("shop", s.screen === "shop");
+    if (selectedIndex >= s.options.length) selectedIndex = 0;
+
+    // The shop draws its own rows so a panel can open under an item.
+    if (s.screen === "shop" && s.shop_items) {
+        const gold = s.player ? s.player.gold : 0;
+        const head = document.createElement("div");
+        head.className = "shop-gold";
+        head.textContent = "You have " + gold + "g — tap an item to see what it gives you";
+        opts.appendChild(head);
+
+        const backIndex = s.options.length - 1;
+        s.options.forEach((label, i) => {
+            if (i === backIndex) {
+                const back = document.createElement("button");
+                back.setAttribute("data-opt", i);
+                back.textContent = "> " + label;
+                back.addEventListener("click", () => { selectedIndex = i; doAction(i); });
+                opts.appendChild(back);
+                return;
+            }
+            const name = s.shop_items[i];
+            const price = s.shop_prices[i];
+
+            const row = document.createElement("div");
+            row.className = "shop-row";
+
+            const btn = document.createElement("button");
+            btn.className = "shop-item";
+            btn.setAttribute("data-opt", i);
+            btn.textContent = "> " + label;
+            btn.setAttribute("aria-expanded", openShopItem === i ? "true" : "false");
+            btn.addEventListener("click", () => {
+                selectedIndex = i;
+                toggleShopItem(i);
+            });
+            row.appendChild(btn);
+
+            if (openShopItem === i) {
+                const panel = document.createElement("div");
+                panel.className = "shop-detail";
+                panel.innerHTML = shopDetailHtml(name, price, s.player);
+
+                const buy = document.createElement("button");
+                buy.className = "shop-buy";
+                buy.textContent = "Buy · " + price + "g";
+                buy.disabled = gold < price;
+                buy.title = gold < price ? "Not enough gold" : "Buy one " + name;
+                buy.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    openShopItem = null;
+                    doShopBuy(name, 1);   // always exactly one
+                });
+                panel.appendChild(buy);
+                row.appendChild(panel);
+            }
+            opts.appendChild(row);
+        });
+        return;
+    }
+
+    s.options.forEach((opt, i) => {
+        const btn = document.createElement("button");
+        btn.setAttribute("data-opt", i);
+        btn.textContent = `> ${opt}`;
+        btn.classList.toggle("selected", i === selectedIndex);
+        btn.addEventListener("click", () => { selectedIndex = i; handleClick(s.screen, i); });
+        opts.appendChild(btn);
+    });
+}
+
+function toggleShopItem(i) {
+    openShopItem = (openShopItem === i) ? null : i;
+    renderOptions(currentState);
+}
+
 function render(s) {
     const prevScreen = currentState ? currentState.screen : null;
     currentState = s;
-    if (prevScreen !== s.screen) selectedIndex = 0;
+    if (prevScreen !== s.screen) { selectedIndex = 0; openShopItem = null; }
     document.getElementById("screen-title").textContent = s.title || "";
 
     const body = document.getElementById("screen-body");
@@ -666,16 +1009,7 @@ function render(s) {
         body.textContent = body.textContent.replace(/^[^\n]*\n+/, "");
     }
 
-    const opts = document.getElementById("options");
-    opts.innerHTML = "";
-    if (selectedIndex >= s.options.length) selectedIndex = 0;
-    s.options.forEach((opt, i) => {
-        const btn = document.createElement("button");
-        btn.textContent = `> ${opt}`;
-        btn.classList.toggle("selected", i === selectedIndex);
-        btn.addEventListener("click", () => { selectedIndex = i; handleClick(s.screen, i); });
-        opts.appendChild(btn);
-    });
+    renderOptions(s);
 
     // Log - every message in the batch stays, newest at the bottom
     const log = document.getElementById("log");

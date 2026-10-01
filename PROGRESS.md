@@ -836,6 +836,89 @@ The colour swap was done with a single scripted pass (`.NET UTF-8 read/write wit
 ### Noted, not changed
 The floor-10 boss bonus is still a flat **+500 gold / +500 XP** on top of the (now much larger) boss kill reward. At level 10 an Elder Dragon alone pays 1750 XP, so the bonus is proportionally small. Easy to scale it in `combat_reward()` if you want.
 
+## Shop Detail Panels, New Map & Monster Art
+
+### 1. The shop now explains each item inline
+
+Clicking an item used to open a modal with a quantity box. It now expands a **panel directly under that item's row**, in the right-hand corner of which is a **Buy** button:
+
+```
+> Shield (25g)                        <- click me
+┌──────────────────────────────────────────────┐
+│ Shield — 25g                               │
+│ Armour        2 AC · shield                │
+│ AC 16 → 18 (+2)                            │
+│                              [ Buy · 25g ]  │
+└──────────────────────────────────────────────┘
+```
+
+- **Always exactly one item.** The quantity prompt is gone; `shopBuy(name, 1)` is called directly, so you cannot accidentally buy 40 potions.
+- **It says what the item gives you**, not just its price: damage dice and damage type, properties (`finesse`, `ranged`, `two-handed`, …), armour type, stat bonuses, and for consumables their effect.
+- **It previews the AC change** ("AC 16 → 18 (+2)") so you can compare before spending. `acPreview()` re-implements `Player.calc_ac()` client-side, substituting the candidate item, so the number is computed with the game's real formula rather than guessed.
+- **Every purchase is written into the chat log**: `Bought 1 × Shield for 25g!`
+- **Broke? The button disables itself** (`Not enough gold`) instead of letting you click and get an error.
+- A gold line sits at the top of the list: *"You have 900g — tap an item to see what it gives you"*.
+
+Details: `#options.shop`, `.shop-row`, `.shop-detail`, `.shop-buy` CSS; `renderShop`/`renderOptions`, `toggleShopItem`, `shopDetailHtml`, `itemStatRows`, `acPreview` in `index.html`. The keyboard handler now selects `#options button[data-opt]`, so the new Buy buttons are skipped by `1`–`9` and the arrow keys.
+
+The old quantity modal (`#buy-overlay`, `#buy-box`, `showBuy`/`buyConfirm`) is left in the markup but is now unreachable — it can be deleted safely.
+
+### 2. The world map was redrawn
+
+The old map was four flat dots joined by straight grey lines. It is now an illustrated fantasy map:
+
+| Layer | What's there |
+|---|---|
+| Ground | vertical gradient (`#0d0d10` → `#17171c`) plus a radial vignette |
+| Hills | soft translucent ellipses |
+| River | a bezier sweep across the map with a faint emerald highlight |
+| Forest | 10 hand-placed conifers near the villages |
+| Mountains | a 4-peak range around the dungeon, with snow caps |
+| Roads | **curved** quadratic paths drawn twice — a dark casing plus a dashed gold centreline — and dimmed when the endpoint is out of reach |
+| Nodes | gold / emerald / red discs with a **castle**, **house** or **cave** glyph inside, a label pill, and a pulsing ring + glow on your current location |
+| Chrome | "You are at: X" caption, a "Tap a lit marker to travel" hint, and a Town/Village/Dungeon legend bottom-left |
+
+Helpers: `roadPath()` (perpendicular-offset bezier so curves stay generic), `tree()`, `mountain()`, `nodeGlyph()`. Nodes grow slightly on hover (`.mn:hover` with `transform-box: fill-box`) and the invisible `r + 12` tap targets remain for phones.
+
+A **legend/dungeon overlap** was caught and fixed: the legend panel originally sat at `x=330 y=318`, directly under the Dungeon node (470, 310) and its label — moved to the bottom-left.
+
+The renderer is self-contained (its CSS lives in an SVG `<style>` block), so the identical block was copied into `templates/index.html` — **both builds show the same map**. It was synced with a script that re-extracts the block, so re-run that if the map changes.
+
+### 3. New Wolf and Elder Dragon portraits
+
+- **Wolf** — redrawn as a snarling side profile: layered ear shapes with dark inner ears, a lighter ruff, angled gold eyes, muzzle with nose and fangs, and a wider ground shadow.
+- **Elder Dragon** — redrawn from a plain oval into a proper dragon head: swept-back horns with lighter inner ridges, a brow ridge, a scaled snout with a defined nostril bridge, four teeth over a pale jaw line, glowing gold eyes with slit pupils and a heavy brow, and a jaw crease.
+
+**On using a Minecraft Elder Dragon image:** that art is owned by Mojang/Microsoft, and copying it into this repository would put your public GitHub project at risk of a takedown or DMCA claim — and you'd need a separate licence to redistribute it. Everything in this project is original inline SVG, so I drew the dragon from scratch instead. If you want a licensed dragon image later, the clean route is to buy one from an asset store (e.g. itch.io art packs), drop the PNG in `icons/`-style art, and point `MONSTER_ART` at it — the portrait pipeline doesn't care whether it's SVG or a file.
+
+### Catalogue-drift guard
+
+While testing I found the two item catalogues had drifted: `items.py` defines 5 shields (`Iron Shield`, `Tower Shield`, `Magic Shield`, `Dragon Shield`, `Aegis Shield`) that **do not exist in `js/items.js`**. Nothing sells them yet, so it was harmless — but if they get added to `shop.py` without `js/shop.js`, the PWA would call `createItem()` for an unknown name, get `null`, push `null` into the inventory, and the next inventory/shop render would throw.
+
+Both builds now refuse the purchase instead:
+
+```python
+if not get_item(item_name):
+    gs["log"] = ["That item is not available."]
+    return show_shop(shop_name)
+```
+```js
+if (!getItem(item)) {
+    gs.log = ["That item is not available."];
+    return showShop(gs.shop_name);
+}
+```
+
+The check runs **before** `spend_gold()`, so gold is never taken for an item that can't be created. Covered by a test that lists a fake item in the Armorer, buys it, and asserts: the shop stays open, gold is unchanged, nothing null lands in the inventory, and the inventory still renders.
+
+**Rule for adding items:** define in **both** `items.py` and `js/items.js`, and sell in **both** `shop.py` and `js/shop.js`. With the guard in place a forgotten entry degrades to "not available" rather than a crash.
+
+### Files changed
+- `index.html` — shop panels, new `drawMap` + scenery helpers, Wolf and Elder Dragon art
+- `templates/index.html` — the same map block (via sync script), XP bar colour
+- `js/game.js`, `game_server.py` — purchase message now reads `Bought 1 × Shield for 25g!`, plus the catalogue-drift guard
+- `sw.js` — `CACHE_VERSION` → `dnd-pwa-v4`
+
 ## To Do
 - **Export / import saves** as a file (see "Saves: where they live" above) so characters can be backed up and moved between devices
 - Quest system (quest lines with objectives and rewards)

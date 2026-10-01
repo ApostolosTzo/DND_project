@@ -1,6 +1,6 @@
 from flask import Flask, render_template, jsonify, request
 from player import Player, create_character, make_character, STAT_ORDER, CLASSES, RACES
-from items import ITEMS, create_item
+from items import ITEMS, create_item, get_item
 from enemy import generate_enemy, generate_dungeon_enemy
 from dice import roll
 from save_load import save_game, load_game, list_saves, save_exists
@@ -510,12 +510,19 @@ def shop_buy():
     if not shop or item_name not in shop["items"]:
         return show_shop(shop_name)
 
+    # Guard: a shop can list an item that items.py does not define (the two
+    # catalogues can drift). Without this, create_item() returns None, None lands
+    # in the inventory and the next inventory/shop render raises.
+    if not get_item(item_name):
+        gs["log"] = ["That item is not available."]
+        return show_shop(shop_name)
+
     price = shop["items"][item_name]["price"]
     total = price * qty
     if p.spend_gold(total):
         for _ in range(qty):
             p.add_item(create_item(item_name))
-        gs["log"] = [f"Bought {qty} {item_name}(s) for {total}g!"]
+        gs["log"] = [f"Bought {qty} × {item_name} for {total}g!"]
     else:
         gs["log"] = [f"Not enough gold! Need {total}g, you have {p.gold}g."]
 

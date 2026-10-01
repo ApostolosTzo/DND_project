@@ -541,11 +541,19 @@ function shopBuy(item, qty) {
         return showShop(gs.shop_name);
     }
 
+    // Guard: a shop can list an item that js/items.js does not define (the two
+    // catalogues can drift). Without this, createItem() returns null, null lands
+    // in the inventory and the next inventory/shop render throws.
+    if (!getItem(item)) {
+        gs.log = ["That item is not available."];
+        return showShop(gs.shop_name);
+    }
+
     const price = shop.items[item].price;
     const total = price * qty;
     if (p.spend_gold(total)) {
         for (let i = 0; i < qty; i++) p.add_item(createItem(item));
-        gs.log = ["Bought " + qty + " " + item + "(s) for " + total + "g!"];
+        gs.log = ["Bought " + qty + " × " + item + " for " + total + "g!"];
     } else {
         gs.log = ["Not enough gold! Need " + total + "g, you have " + p.gold + "g."];
     }
