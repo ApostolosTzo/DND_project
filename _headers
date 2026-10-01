@@ -1,0 +1,22 @@
+# Cloudflare Pages response headers
+#
+# The service worker checks sw.js on startup to find new versions, and index.html
+# is the app shell. If the CDN caches either of them, players can be stuck on an
+# old build no matter how often you push.
+
+/sw.js
+  Cache-Control: no-cache
+
+/index.html
+  Cache-Control: no-cache
+
+# Fingerprint-free assets would be cached hard, but these files are not hashed
+# on disk, so they are revalidated instead.
+/js/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+/icons/*
+  Cache-Control: public, max-age=86400
+
+/manifest.json
+  Cache-Control: public, max-age=0, must-revalidate

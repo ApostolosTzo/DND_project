@@ -523,7 +523,50 @@ Grouped consumables by name (same pattern as the inventory screen). The options 
 ### Files changed
 - `game_server.py` — `combat_action()` and `combat_item_action()` both build a grouped item dict and index into group names instead of raw item list
 
-## PWA Port (GitHub Pages, fully client-side)
+## Hosting moved to Cloudflare
+
+> **Superseded:** the deployment originally shipped through **GitHub Pages**. That
+> path is gone — `.nojekyll` deleted, the README no longer describes it, and the Pages
+> deployment was removed from the repository. The GitHub Pages notes further down
+> are kept only as a record of what was done at the time.
+
+The game now lives at **https://dnd-project.ap-tzortzakis.workers.dev** — a Cloudflare
+**Worker serving the repository as static assets**, connected to GitHub through
+Cloudflare's Git integration. A push to `main` still deploys automatically — only
+the host changed.
+
+| Removed | Replaced with |
+|---|---|
+| `.nojekyll` (stopped GitHub Pages running Jekyll) | nothing needed |
+| GitHub Pages deployment on the repo | Cloudflare Worker `dnd-project` |
+| README "Settings — Pages — Deploy from a branch" steps | Workers — `dnd-project` — Settings — Builds (Git connection, production branch `main`) |
+
+Note the host is a Worker on a `workers.dev` subdomain, not Cloudflare Pages
+(`pages.dev`) — the two products are configured in different places, so the README
+documents the Worker path.
+
+Added: **`_headers`**, which asks Cloudflare not to serve a stale `sw.js` or
+`index.html` from its CDN:
+
+```
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+```
+
+That is the piece GitHub Pages did not need. In testing the Worker already served
+both as `must-revalidate`, so this is a guarantee rather than a fix — without it the
+CDN could pin an old service worker in a player's browser and no push would ever
+reach them. The `CACHE_VERSION` bump in `sw.js` is still required for game-code
+changes; these headers make sure the browser is even *told* there is a new worker.
+
+Nothing else moved: all asset paths were already relative, so the build works
+unchanged from a domain root or a project subdomain. Verified by byte-comparing the
+served `index.html` against the repository — identical (SHA-256 `AC82F448`
+`F81053BC`) — before the old deployment was switched off.
+
+## PWA Port (originally GitHub Pages, fully client-side)
 
 ### Goal
 Run the game from a GitHub repository with no Python host, installable on a phone and playable offline. GitHub Pages is static-only, so the Flask layer was replaced by a browser port of the same game logic.

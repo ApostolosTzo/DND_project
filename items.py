@@ -97,26 +97,6 @@ ITEMS = {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     # --- Extra weapons (added: 30) ---
     "Shortsword": Weapon("Shortsword", "1d6", "slashing", ["versatile"], stats_bonus={"STR": 1}),
     "Sabre": Weapon("Sabre", "1d8", "slashing", ["finesse"], stats_bonus={"DEX": 1}),

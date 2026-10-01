@@ -31,17 +31,23 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 
 ## How to Run
 
-### Static PWA (no server, works on GitHub Pages)
+### Option A — the PWA (static, no server)
 
 ```bash
 python -m http.server 8000
 ```
 
-Then open **http://localhost:8000**. All game logic runs in the browser, so any static host works — including GitHub Pages.
+Then open **http://localhost:8000**. All game logic runs in the browser, so
+any static host works — this one is deployed on **Cloudflare**.
 
+### Option B — Flask app (Python backend)
 
+```bash
+py -m pip install flask     # once
+py ./game_server.py
+```
 
-
+Then open **http://localhost:5000** in your browser.
 
 > Use the **`py`** launcher, not a bare `python`. On Windows, `python` on `PATH`
 > is often a different interpreter (an MSYS2 build here) that has no pip and no
@@ -49,15 +55,63 @@ Then open **http://localhost:8000**. All game logic runs in the browser, so any 
 > prefer the plain command, install Flask into whatever `python` resolves to and
 > make sure that's a full CPython, not the MSYS2 one.
 
+## Deploying (Cloudflare)
+
+The live game is served by a **Cloudflare Worker that ships this repository as
+static assets**:
+
+```
+https://dnd-project.ap-tzortzakis.workers.dev
+```
+
+The repository is connected to that Worker through Cloudflare's Git integration,
+so **every push to `main` redeploys automatically** — there is nothing to
+publish by hand.
+
+The only requirement is that the **repository root is served as the static assets
+directory**, since `index.html` lives there. There is no build step: no bundler,
+no framework, nothing to install. All asset paths are relative (`./js/...`,
+`icons/...`), so the site works unchanged from a domain root or a project
+subdomain.
+
+To change the setup: **Cloudflare dashboard — Workers & Pages — `dnd-project` —
+Settings — Builds** (Git connection, production branch, build and deploy
+commands). HTTPS is automatic, and a custom domain can be attached under the
+project's **Settings — Domains & Routes**.
+
+### Cache headers
+
+`_headers` tells Cloudflare not to sit on the service worker or the app shell:
+
+```
+/sw.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+```
+
+Cloudflare already serves these as `must-revalidate` by default, so the file is
+belt-and-braces rather than a fix — but if the CDN ever handed a browser a
+pinned old `sw.js`, no push you ever made would reach that player.
+
+### After you push
+
+Cloudflare takes about a minute to build. Players then pick the new version up the
+next time they open the app — the service worker swaps caches as soon as it sees a
+changed `sw.js`.
+
+> **Bump `CACHE_VERSION` in `sw.js` whenever you change anything under `js/`.**
+> Those files are served cache-first, so without a bump the browser keeps running
+> the old game code even after the new HTML arrives. That one line is the entire
+> update mechanism.
+
 ## Install as an App (PWA)
 
-The static version is a full PWA: it caches itself for offline play and can be installed to a home screen / desktop.
+The deployed site is a full PWA: it caches itself for offline play and can be installed to a home screen / desktop.
 
-1. Deploy the repo to GitHub Pages: **Settings → Pages → Source: Deploy from a branch → Branch: `main` / `root`**.
-   All asset paths are relative, so it works both at `https://<user>.github.io/` and `https://<user>.github.io/<repo>/`.
-2. Open the site in a browser (it must be HTTPS — GitHub Pages is automatically).
-3. **Android / Chrome:** menu → *Add to Home screen*. **iOS / Safari:** Share → *Add to Home Screen*. **Desktop Chrome/Edge:** install icon in the address bar.
-4. Launch it — it works with no connection, and saves persist in the browser (localStorage).
+1. Open the Cloudflare URL above (HTTPS is automatic).
+2. **Android / Chrome:** menu — *Add to Home screen*. **iOS / Safari:** Share — *Add to Home Screen*. **Desktop Chrome/Edge:** install icon in the address bar.
+3. Launch it — it works with no connection, and saves persist in the browser (localStorage).
 
 > **Saves are device-local.** Each browser on each device keeps its own characters — a save is not synced or backed up. It survives closing the app, rebooting and being offline, but it is **wiped** by "Clear cookies and site data" (and by uninstalling the app on Android), and it does not follow you to another device or browser.
 
@@ -67,6 +121,7 @@ Files that make it a PWA:
 |---|---|
 | `manifest.json` | App name, colours, display mode, icon set |
 | `sw.js` | Service worker: pre-caches the app, serves it offline |
+| `_headers` | Cache-control rules for Cloudflare |
 | `icons/` | 192 / 512 / maskable / apple-touch icons (placeholders) |
 
 ### Replacing the placeholder icon
@@ -261,10 +316,10 @@ The nine monster portraits keep their own colours (they are creatures, not chrom
 
 ```
 DND_project/
-├── index.html           # PWA client (static build, GitHub Pages entry point)
+├── index.html           # PWA client (static build, Cloudflare entry point)
 ├── manifest.json        # Web app manifest (name, icons, colours)
 ├── sw.js                # Service worker (offline cache)
-├── .nojekyll            # Tells GitHub Pages not to run Jekyll
+├── _headers             # Cloudflare cache-control rules
 ├── js/                  # Game logic ported from Python, runs in the browser
 │   ├── dice.js          # Dice roller (NdX+Y)
 │   ├── items.js         # Weapons, armor, shields, potions, quest materials
