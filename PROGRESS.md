@@ -554,6 +554,41 @@ The UI was left alone deliberately: `respond()` returns the exact object Flask u
 2. **Saves moved to `localStorage`** under one `dnd_saves` key, keeping the exact save schema the Python version writes (so the JSON shape stays familiar). Works per-device/per-browser rather than on the server.
 3. **`gs["screen"] = screen` inside `respond()`** — the state-desync fix from the shop bug chain was carried over, so the client and the in-page state machine can't drift apart.
 
+### Saves: where they live and when they disappear
+
+Every save is written to `localStorage` under a single `dnd_saves` key as
+`{ "<save_name>": { ...player data } }`, using the same field names the Python
+version writes to `saves/*.json`. Nothing is ever sent to GitHub — the data
+never leaves the device.
+
+This is the trade-off for going server-free, and it is worth knowing before
+you hand the link to someone:
+
+| Situation | Save still there? |
+|---|---|
+| Same device, same browser, days/weeks later | ✅ Yes |
+| Same device, fully offline (no Wi-Fi/cellular) | ✅ Yes |
+| Same device after closing the tab / browser / reboot | ✅ Yes |
+| Same device, **different browser** (Chrome → Safari) | ❌ No — separate storage |
+| A different device (your phone vs their phone) | ❌ No — not synced |
+| Browser "Clear cookies and site data" | ❌ **Wiped** |
+| Android: uninstalling the installed PWA | ❌ **Wiped** |
+| iOS: removing the home-screen icon | ⚠️ Usually kept, not guaranteed |
+
+So a friend who plays on their phone, saves a Wizard, and reopens the game
+next week on that same phone still has their Wizard. But the saves are
+device-local, unbacked, and lost if the site data is cleared — they cannot be
+moved to another device or shared with another player without a manual
+copy/paste of the JSON.
+
+Two ways to fix that later, in increasing order of effort:
+1. **Export / import a save as a file** — a "Download save" button that writes
+   the character JSON out (shareable over WhatsApp/AirDrop) and an "Import"
+   that reads it back. Stays 100% static, needs a `Blob` + file input in
+   `js/saves.js` and two buttons in the save menu.
+2. **Real sync** — needs a backend (the Flask build, or a hosted DB), which
+   puts you back to needing a host, i.e. the thing GitHub Pages can't do.
+
 ### Porting bugs caught and fixed
 1. **Dungeon shop list** — Python's `loc.get("shops", default)` returns the *empty* list for the Dungeon (only missing keys get the default). The first JS version treated `[]` as falsy and offered all 5 shops there. Fixed with `hasOwnProperty`, and covered by a test.
 2. **Corrupt/missing save** — `loadGame()` returns `null` now instead of throwing on `player.current_save`.
@@ -576,7 +611,137 @@ The UI was left alone deliberately: `respond()` returns the exact object Flask u
 - When you change game rules, change both `*.py` and `js/*`.
 - When you replace the icons, bump `CACHE_VERSION` in `sw.js` so returning visitors get them.
 
+## UI Overhaul, Combat Log & Monster Portraits
+
+### What changed
+
+**1. A CON skill point now heals you to full.**
+`allocation_action()` / `allocationAction()` already called `recalc_hp()` for CON (raising max HP) but left current HP untouched, so a new point felt dead. It now also sets `p.hp = p.max_hp`, in both the Python and JS builds.
+
+**2. The combat chat accumulates instead of being wiped.**
+`combat_action()` used to do `gs["log"] = [result]` on every attack, so each exchange erased the previous one and you only ever saw the last round. It now appends:
+
+| Action | Before | After |
+|---|---|---|
+| Player attacks | `log = [result]` (wiped) | `log.append(result)` |
+| Enemy attacks | appended | appended (unchanged) |
+| Failed flee | `log = ["Failed to flee!"]` | appended |
+| Drink potion in combat | `log = ["Drank ..."]` | appended |
+| Out of potions / cannot flee in dungeon | `log = [...]` | appended |
+
+Victory still resets the log, so a new fight starts with a clean "A wild X appears!" line.
+
+**3. Monster portraits.** Each of the 9 monsters now has a hand-drawn inline SVG (`MONSTER_ART` in `index.html`): Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, Demon Lord, Elder Dragon, plus a fallback. The portrait appears on combat screens and on a live dungeon floor, with the monster's name, HP bar and AC; the duplicated first line of the screen body ("Lv.1 Zombie HP 12/22 AC 8") is stripped while it is showing.
+
+**4. The monster reacts to damage.** A `--dmg` custom property (0 = untouched, 1 = nearly dead) drives progressive distortion, and landing a hit plays a shake:
+
+```css
+transform: rotate(calc(var(--dmg) * 7deg)) skewX(calc(var(--dmg) * 8deg)) scale(calc(1 - var(--dmg) * 0.05));
+filter: blur(calc(var(--dmg) * 1.3px)) saturate(calc(1 - var(--dmg) * 0.45)) hue-rotate(calc(var(--dmg) * 55deg));
+```
+```css
+@keyframes monster-hit { /* 11px shake + brightness flash, 450ms */ }
+```
+The class is applied by comparing the incoming enemy HP with `lastEnemyHp` from the previous render — a **miss** deliberately does not shake it.
+
+**5. The map gets out of the way during a fight.** `body.in-combat` hides `#map-container` and lets `#log` stretch (`flex: 1`), so the chat fills the free space instead of scrolling in a 100px box. The class is set whenever a monster is on screen *or* `in_dungeon` is true.
+
+**6. Responsive UI for phones.** The old layout was a fixed two-column flex with a `min-width: 220px` sidebar, which squashed on a phone:
+
+- `@media (max-width: 760px)` — single column, player panel moves to the top as a 2-column grid (`order: -1`), buttons grow to `min-height: 46px` / `font-size: 1em`, monster portrait drops to 92px
+- `@media (max-width: 400px)` — portrait stacks above the HP bar
+- `#buy-box` no longer has a `min-width: 300px` that overflowed narrow screens (`max-width: 92vw`)
+- Map nodes got an invisible `r + 11` hit area so they're tappable on a phone, plus `<title>` tooltips
+- `env(safe-area-inset-bottom)` padding for notched phones, and `viewport-fit=cover`
+
+**7. Desktop niceties.** `1`–`9` pick an option, `↑`/`↓` move a gold-highlighted selection and `Enter` confirms; a subtle `1-9 or ↑/↓ + Enter` hint sits under the buttons; the sidebar rows use flex instead of `float: right`; the log stamps each line with its own timestamp and auto-scrolls to the newest.
+
+**8. "Quit" removed from the main menu.** It never did anything — `handleClick()` ignores index 2 on `main_menu`. `MENU_OPTIONS` is now `["New Game", "Load Game"]` (5 call sites in Python, 1 constant in JS). The town screen's Quit still works and is the way back to the menu.
+
+### Bug found while testing the above
+`render()` ended up calling `renderStage()` twice (once inline, once left over next to `drawMap()`). The second call rebuilt `stage.innerHTML`, wiping the `hit` class the first call had just added, so **the hit animation never played**. Caught by asserting on `getAnimations()` synchronously after a programmatic attack, and fixed by keeping a single call.
+
+### Also changed
+- `respond()` now includes `enemy` (`name/level/hp/max_hp/ac`) and `in_dungeon`, so the UI can render the portrait (mirrored in `game_server.py` with `enemy_json()`)
+- `CACHE_VERSION` bumped to `dnd-pwa-v2` — **`js/*.js` is cache-first**, so without a bump returning players keep running the old game code even though the HTML updates
+
+### Files changed
+- `js/game.js` — CON full heal, appending combat log, `enemy`/`in_dungeon` in the payload, main menu without Quit
+- `game_server.py` — the same four changes, mirrored
+- `index.html` — monster SVGs, `#combat-stage`, hit/distortion CSS, responsive CSS, map hit areas, keyboard shortcuts, log timestamps, duplicate-render fix
+- `sw.js` — cache version bump
+
+## Character Reference Tables
+
+Stats are rolled with **4d6-drop-lowest** (each 3–18), then the race bonus is applied.
+
+### Races
+
+| Race | STR | DEX | CON | INT | WIS | CHA | Description |
+|---|---|---|---|---|---|---|---|
+| Human | +1 | +1 | +1 | +1 | +1 | +1 | Versatile and ambitious |
+| Elf | — | +2 | — | +1 | — | — | Graceful and perceptive |
+| Dwarf | +1 | — | +2 | — | — | — | Tough and resilient |
+| Halfling | — | +2 | — | — | — | +1 | Lucky and nimble |
+
+### Classes
+
+| Class | Base HP | HP per level | Primary stat | Starting weapon | Starting armor | Potions |
+|---|---|---|---|---|---|---|
+| Fighter | 10 | +4 | STR | Longsword (+1 STR) | Chainmail (medium) | 6 × Healing Potion |
+| Rogue | 8 | +3 | DEX | Dagger (+1 DEX) | Leather (light) | 6 × Healing Potion |
+| Wizard | 6 | +2 | INT | Magic Staff | *none* | 6 × Healing Potion |
+| Cleric | 8 | +3 | WIS | Mace (+1 STR) | Plate (heavy) | 6 × Healing Potion |
+
+### Starting health and armour class
+
+| Class | HP at level 1 | AC range | AC formula |
+|---|---|---|---|
+| Fighter | 10 + CON mod | 14 – 16 | `14 + min(DEX mod, 2)` — Chainmail, medium (DEX capped at +2) |
+| Rogue | 8 + CON mod | 8 – 17 | `11 + DEX mod` — Leather, light (the Dagger's +1 DEX counts) |
+| Wizard | 6 + CON mod | 7 – 16 | `10 + DEX mod` — no armour |
+| Cleric | 8 + CON mod | 17 flat | `17` — Plate, heavy (DEX ignored) |
+
+Modifiers are `floor((stat - 10) / 2)`. Max HP is
+`class HP + (level - 1) × HP per level + CON mod × level`.
+
+### What each stat does
+
+| Stat | Effect | Formula |
+|---|---|---|
+| **STR** | Melee attack rolls & damage | `STR mod` on the attack roll and on damage |
+| **DEX** | Ranged/finesse attack & damage, **AC** | see the AC column above |
+| **CON** | **Max HP** | `+1 HP per level` per CON modifier point (and heals to full when spent) |
+| **INT** | *No effect yet* — reserved for Wizard spells | — |
+| **WIS** | *No effect yet* — reserved for Cleric spells | — |
+| **CHA** | *No effect yet* | — |
+
+### Levelling
+
+| Event | Effect |
+|---|---|
+| XP to next level | `level × 100` |
+| HP on level up | class HP per level + 2 per CON modifier point, healed to full |
+| Gold on level up | `new level × 10` |
+| Skill points | +1 per level, +5 extra at levels 4, 8, 12, … |
+| Combat accuracy | `d20 + proficiency + stat mod` vs target AC, proficiency `= floor((level - 1) / 4) + 2` |
+
+### Equipment stat bonuses
+
+| Item | Bonus |
+|---|---|
+| Longsword, Battle Axe, War Hammer, Mace, Flail, Spear, Quarterstaff | +1 STR |
+| Greatsword | +2 STR |
+| Rapier, Dagger, Shortbow, Longbow, Crossbow, Hand Crossbow | +1 DEX |
+| Studded Leather | +1 DEX |
+| Arcane Staff | +1 INT |
+| Wizard Robe | +9 INT ⚠️ |
+| Dragon Scale | +8 CON ⚠️ |
+
+> ⚠️ `Wizard Robe` (+9 INT) and `Dragon Scale` (+8 CON) look like typos for +1 in the item data — that's +4 to the modifier, and Dragon Scale grants +4 CON per level. Reproduced as-is in both `items.py` and `js/items.js`; worth fixing in both.
+
 ## To Do
+- **Export / import saves** as a file (see "Saves: where they live" above) so characters can be backed up and moved between devices
 - Quest system (quest lines with objectives and rewards)
 - Crafting system (craft items using enemy drops)
 - More items (scrolls, rings, materials, etc.)

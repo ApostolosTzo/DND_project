@@ -40,6 +40,17 @@ def player_json(p):
         "stat_bonuses": p.get_equipment_stat_bonus(),
     }
 
+def enemy_json(e):
+    if not e:
+        return None
+    return {
+        "name": e.name,
+        "level": e.level,
+        "hp": e.hp,
+        "max_hp": e.max_hp,
+        "ac": e.ac,
+    }
+
 # Function to respond with the current game state
 
 def town_name():
@@ -56,6 +67,8 @@ def respond(screen, title, body, options, extra=None):
         "body": body,
         "options": options,
         "player": player_json(gs["player"]),
+        "enemy": enemy_json(gs["enemy"]),
+        "in_dungeon": gs["dungeon_floor"] > 0,
         "log": gs["log"],
         # Include the current location in the response
         "current_location": gs["current_location"],
@@ -71,7 +84,7 @@ def index():
 @app.route("/state")
 def get_state():
     gs["log"] = []
-    return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game", "Quit"])
+    return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game"])
 
 @app.route("/create_form")
 def create_form():
@@ -158,7 +171,7 @@ def handle_action():
         gs["dungeon_floor"] = 0
         gs["screen"] = "main_menu"
         gs["log"] = []
-        return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game", "Quit"])
+        return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game"])
 
     return get_state()
 
@@ -225,7 +238,7 @@ def town_action(choice):
         gs["enemy"] = None
         gs["screen"] = "main_menu"
         gs["log"] = []
-        return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game", "Quit"])
+        return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game"])
 
     return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
 
@@ -246,8 +259,9 @@ def combat_action(choice):
 
     # Attack
     if choice == 0:  
+        # The combat log accumulates: every exchange stays visible in the chat.
         result = web_player_attack(p, e)
-        gs["log"] = [result]
+        gs["log"].append(result)
 
         if not e.is_alive():
             return combat_reward("Victory!")
@@ -265,7 +279,7 @@ def combat_action(choice):
     elif choice == 1:  
         consumables = [item for item in p.inventory if item.category == "item" and item != p.weapon and item != p.armor and item != p.shield]
         if not consumables:
-            gs["log"] = ["No potions to use!"]
+            gs["log"].append("No potions to use!")
             return combat_state()
 
         grouped = {}
@@ -279,7 +293,7 @@ def combat_action(choice):
     # Flee (not allowed in dungeon)
     elif choice == 2:
         if gs["dungeon_floor"] > 0:
-            gs["log"] = ["You cannot flee from the dungeon!"]
+            gs["log"].append("You cannot flee from the dungeon!")
             return combat_state()
         if roll("1d20") >= 10:
             gs["enemy"] = None
@@ -287,7 +301,7 @@ def combat_action(choice):
             gs["log"] = ["You fled successfully!"]
             return respond("town", "Fled!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
         else:
-            gs["log"] = ["Failed to flee!"]
+            gs["log"].append("Failed to flee!")
             result2 = web_enemy_attack(p, e)
             gs["log"].append(result2)
             if not p.is_alive():
@@ -316,14 +330,14 @@ def combat_item_action(choice):
         heal = 9
         p.hp = min(p.hp + heal, p.max_hp)
         p.remove_item(item)
-        gs["log"] = [f"Drank Healing Potion! Restored {heal} HP."]
+        gs["log"].append(f"Drank Healing Potion! Restored {heal} HP.")
     elif item.name == "Greater Healing Potion":
         heal = 20
         p.hp = min(p.hp + heal, p.max_hp)
         p.remove_item(item)
-        gs["log"] = [f"Drank Greater Healing Potion! Restored {heal} HP."]
+        gs["log"].append(f"Drank Greater Healing Potion! Restored {heal} HP.")
     else:
-        gs["log"] = [f"Cannot use {item.name} in combat yet."]
+        gs["log"].append(f"Cannot use {item.name} in combat yet.")
 
         result2 = web_enemy_attack(p, e)
         gs["log"].append(result2)
@@ -429,6 +443,8 @@ def allocation_action(choice):
     p.ac = p.calc_ac()
     if chosen == "CON":
         p.recalc_hp()
+        # A CON point raises max HP and heals the character to full.
+        p.hp = p.max_hp
     p.skill_points -= 1
     gs["log"] = [f"{chosen} increased to {p.stats[chosen]}!"]
 
@@ -594,7 +610,7 @@ def load_list():
     saves = list_saves()
     gs["screen"] = "load_menu"
     if not saves:
-        return respond("main_menu", "No saves found", "", ["New Game", "Load Game", "Quit"])
+        return respond("main_menu", "No saves found", "", ["New Game", "Load Game"])
     options = [f"{s[1]} {s[2]} {s[3]} Lv.{s[4]}" for s in saves]
     return respond("load_menu", "Load Game", "", options + ["(Back)"])
 
@@ -603,7 +619,7 @@ def load_action(choice):
     if choice >= len(saves):
         gs["screen"] = "main_menu"
         gs["log"] = []
-        return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game", "Quit"])
+        return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game"])
 
     name = saves[choice][0]
     player = load_game(name)

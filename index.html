@@ -58,9 +58,9 @@
             min-width: 220px;
         }
         #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
-        #right p { margin: 4px 0; }
+        #right p { margin: 4px 0; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
         #right .stat { color: #a8d8ea; }
-        #right .val  { color: #e0e0e0; float: right; }
+        #right .val  { color: #e0e0e0; text-align: right; }
         #screen-title {
             color: #c9a84c;
             font-size: 1.2em;
@@ -87,16 +87,24 @@
             background: #0f3460;
             color: #e0e0e0;
             border: 1px solid #333;
-            padding: 10px 15px;
+            padding: 12px 16px;
+            min-height: 46px;
             font-family: 'Courier New', monospace;
             font-size: 0.95em;
             cursor: pointer;
             text-align: left;
             border-radius: 4px;
             transition: 0.2s;
+            touch-action: manipulation;
         }
         #options button:hover { background: #1a5276; border-color: #c9a84c; }
         #options button:active { background: #0b2545; }
+        #options button.selected {
+            border-color: #c9a84c;
+            background: #1a5276;
+            box-shadow: inset 4px 0 0 #c9a84c;
+        }
+        .hint { color: #5a6b8c; font-size: 0.72em; margin-top: 8px; text-align: right; }
         #log {
             margin-top: 15px;
             padding: 10px;
@@ -156,7 +164,8 @@
         }
         #buy-box {
             background: #16213e; padding: 25px; border-radius: 10px;
-            border: 1px solid #c9a84c; text-align: center; min-width: 300px;
+            border: 1px solid #c9a84c; text-align: center;
+            width: 100%; max-width: 92vw;
         }
         #buy-box h3 { color: #c9a84c; margin-bottom: 15px; }
         #buy-box input {
@@ -170,6 +179,100 @@
             font-family: 'Courier New', monospace;
         }
         #buy-box button:hover { background: #dbb95c; }
+
+        /* ---------- Safe area (standalone / notched phones) ---------- */
+        body { padding-bottom: env(safe-area-inset-bottom); }
+
+        /* ---------- Combat stage: monster portrait ---------- */
+        #combat-stage {
+            display: none;
+            background: #16213e;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 15px;
+        }
+        #combat-stage.on { display: block; }
+        .monster {
+            --dmg: 0;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+        .monster-art {
+            flex: 0 0 auto;
+            width: 120px; height: 120px;
+            display: grid; place-items: center;
+        }
+        /* The more damage it has taken, the more twisted and washed out it looks. */
+        .monster svg {
+            width: 120px; height: 120px; display: block;
+            transform:
+                rotate(calc(var(--dmg) * 7deg))
+                skewX(calc(var(--dmg) * 8deg))
+                scale(calc(1 - var(--dmg) * 0.05));
+            filter:
+                blur(calc(var(--dmg) * 1.3px))
+                saturate(calc(1 - var(--dmg) * 0.45))
+                hue-rotate(calc(var(--dmg) * 55deg));
+            transition: transform .25s ease, filter .25s ease;
+        }
+        .monster-art.hit { animation: monster-hit .45s ease-out; }
+        @keyframes monster-hit {
+            0%   { transform: translate(0,0) rotate(0deg); filter: brightness(1); }
+            15%  { transform: translate(-11px,4px) rotate(-11deg); filter: brightness(1.9); }
+            30%  { transform: translate(10px,-4px) rotate(9deg); filter: brightness(1.25); }
+            45%  { transform: translate(-7px,3px) rotate(-6deg); }
+            60%  { transform: translate(6px,1px) rotate(5deg); }
+            80%  { transform: translate(-3px,0) rotate(-2deg); }
+            100% { transform: translate(0,0) rotate(0deg); filter: brightness(1); }
+        }
+        .monster-info { flex: 1; min-width: 0; }
+        .monster-name { color: #e74c3c; font-size: 1.05em; letter-spacing: 1px; margin-bottom: 8px; }
+        #ehp-bar { background: #2a2a3d; height: 12px; border-radius: 6px; overflow: hidden; }
+        #ehp-fill {
+            background: linear-gradient(90deg, #c0392b, #e74c3c);
+            height: 100%; transition: width .3s;
+        }
+        .monster-hp { color: #a8d8ea; font-size: .8em; margin-top: 6px; }
+
+        /* ---------- Combat / dungeon focus: hide the map, grow the chat ---------- */
+        #log { min-height: 40px; max-height: 170px; }
+        body.in-combat #map-container { display: none; }
+        body.in-combat #log { flex: 1; max-height: none; min-height: 130px; }
+
+        /* ---------- Responsive: phones ---------- */
+        @media (max-width: 760px) {
+            #app { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); }
+            header { padding: 10px 4px; margin-bottom: 14px; }
+            header h1 { font-size: 1.05em; letter-spacing: 1px; }
+            #main { flex-direction: column; gap: 14px; }
+            #right {
+                order: -1;
+                min-width: 0; width: 100%;
+                display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 14px;
+                padding: 12px;
+            }
+            #right h3 { grid-column: 1 / -1; }
+            #screen-title { font-size: 1.05em; margin-bottom: 8px; }
+            #screen-body { font-size: 0.95em; min-height: 60px; }
+            #options button { font-size: 1em; padding: 14px; }
+            #create-form input, #create-form select, #create-form button { font-size: 1em; padding: 12px; }
+            #buy-box { padding: 20px; }
+            #combat-stage { padding: 10px; }
+            .monster { gap: 12px; }
+            .monster-art, .monster svg { width: 92px; height: 92px; }
+            .monster-name { font-size: .95em; }
+            #log { font-size: 0.82em; }
+            .hint { display: none; }
+        }
+        @media (max-width: 400px) {
+            .monster { flex-direction: column; text-align: center; }
+            .monster-art, .monster svg { width: 84px; height: 84px; }
+        }
+        @media (min-width: 1100px) {
+            #app { max-width: 1100px; }
+        }
     </style>
 </head>
 <body>
@@ -178,8 +281,10 @@
     <div id="main">
         <div id="left">
             <div id="screen-title"></div>
+            <div id="combat-stage"></div>
             <div id="screen-body"></div>
             <div id="options"></div>
+            <div class="hint">1-9 or ↑/↓ + Enter</div>
             <div id="log"></div>
             <div id="map-container"></div>
         </div>
@@ -267,7 +372,11 @@ function drawMap(currentId) {
             svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
         }
         const clickable = isConnected && !isCurrent;
-        svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}"${clickable ? ' style="cursor:pointer" onclick="travel(\'' + id + '\')"' : ""}/>`;
+        if (clickable) {
+            // A generous invisible hit area, so the node is easy to tap on a phone.
+            svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r + 11}" fill="transparent" style="cursor:pointer" onclick="travel('${id}')"><title>Travel to ${loc.name}</title></circle>`;
+        }
+        svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}" pointer-events="none"><title>${loc.name}</title></circle>`;
         const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
         const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
         svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
@@ -356,8 +465,192 @@ function submitCreate() {
     doStart({name, race, class: cls});
 }
 
+// -----------------------------
+// Monster portraits
+// Each monster gets a hand-drawn SVG. The --dmg custom property (0 = untouched,
+// 1 = nearly dead) drives how twisted and washed out the sprite looks.
+// -----------------------------
+
+const MONSTER_ART = {
+    "Zombie": `<g>
+        <ellipse cx="60" cy="110" rx="32" ry="6" fill="#000" opacity=".35"/>
+        <path d="M42 54 h36 v30 a18 18 0 0 1 -36 0 z" fill="#4a7c3f"/>
+        <rect x="44" y="20" width="32" height="36" rx="7" fill="#5b9450"/>
+        <circle cx="53" cy="35" r="4" fill="#10200e"/><circle cx="67" cy="35" r="4" fill="#10200e"/>
+        <path d="M50 46 h20" stroke="#2b4a24" stroke-width="3" stroke-linecap="round"/>
+        <path d="M42 62 L26 76" stroke="#5b9450" stroke-width="9" stroke-linecap="round"/>
+        <path d="M78 62 L94 52" stroke="#5b9450" stroke-width="9" stroke-linecap="round"/>
+    </g>`,
+    "Skeleton": `<g>
+        <ellipse cx="60" cy="110" rx="26" ry="5" fill="#000" opacity=".35"/>
+        <path d="M60 56 v42" stroke="#e8e6d8" stroke-width="5" stroke-linecap="round"/>
+        <path d="M46 66 h28 M46 78 h28 M48 90 h24" stroke="#e8e6d8" stroke-width="4" stroke-linecap="round"/>
+        <path d="M60 56 L44 72 M60 56 L76 72" stroke="#e8e6d8" stroke-width="4" stroke-linecap="round"/>
+        <rect x="44" y="14" width="32" height="36" rx="10" fill="#f2f0e2"/>
+        <circle cx="53" cy="30" r="5" fill="#1a1a2e"/><circle cx="67" cy="30" r="5" fill="#1a1a2e"/>
+        <path d="M50 42 h20" stroke="#1a1a2e" stroke-width="3"/>
+        <path d="M54 42 v5 M60 42 v5 M66 42 v5" stroke="#1a1a2e" stroke-width="2"/>
+    </g>`,
+    "Spider": `<g>
+        <ellipse cx="60" cy="106" rx="34" ry="6" fill="#000" opacity=".35"/>
+        <path d="M60 74 C34 78 22 62 18 44 M60 74 C86 78 98 62 102 44
+                 M60 80 C36 88 26 82 14 70 M60 80 C84 88 94 82 106 70
+                 M60 72 C40 66 34 52 34 38 M60 72 C80 66 86 52 86 38"
+              stroke="#3d2f52" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <ellipse cx="60" cy="80" rx="22" ry="18" fill="#3d2f52"/>
+        <circle cx="60" cy="52" r="17" fill="#4e3d68"/>
+        <circle cx="53" cy="49" r="4" fill="#c0392b"/><circle cx="67" cy="49" r="4" fill="#c0392b"/>
+        <path d="M50 62 L58 66 M70 62 L62 66" stroke="#c0392b" stroke-width="3" stroke-linecap="round"/>
+    </g>`,
+    "Wolf": `<g>
+        <ellipse cx="60" cy="106" rx="32" ry="6" fill="#000" opacity=".35"/>
+        <path d="M60 60 C38 60 34 36 44 24 L52 40 L60 32 L68 40 L76 24 C86 36 82 60 60 60 z" fill="#8a8f99"/>
+        <path d="M44 24 L48 38 L52 30 z M76 24 L72 38 L68 30 z" fill="#5c5f68"/>
+        <ellipse cx="60" cy="66" rx="13" ry="10" fill="#6b707a"/>
+        <path d="M56 74 L64 74 L60 82 z" fill="#2b2b33"/>
+        <circle cx="52" cy="46" r="4" fill="#f1c40f"/><circle cx="68" cy="46" r="4" fill="#f1c40f"/>
+        <path d="M60 46 v8" stroke="#3a3a42" stroke-width="2"/>
+    </g>`,
+    "Goblin": `<g>
+        <ellipse cx="60" cy="106" rx="26" ry="5" fill="#000" opacity=".35"/>
+        <path d="M46 46 L18 26 L40 32 z M74 46 L102 26 L80 32 z" fill="#7cb342"/>
+        <ellipse cx="60" cy="56" rx="26" ry="24" fill="#8bc34a"/>
+        <circle cx="51" cy="52" r="5" fill="#f5f5f5"/><circle cx="69" cy="52" r="5" fill="#f5f5f5"/>
+        <circle cx="51" cy="52" r="2.5" fill="#1a1a2e"/><circle cx="69" cy="52" r="2.5" fill="#1a1a2e"/>
+        <path d="M60 60 l-7 8 h14 z" fill="#33691e"/>
+        <path d="M48 70 h24" stroke="#33691e" stroke-width="3" stroke-linecap="round"/>
+        <path d="M50 82 h20 v18 h-20 z" fill="#7cb342"/>
+    </g>`,
+    "Slime": `<g>
+        <ellipse cx="60" cy="100" rx="38" ry="8" fill="#000" opacity=".3"/>
+        <path d="M60 22 C86 22 96 62 96 78 C96 94 80 102 60 102 C40 102 24 94 24 78 C24 62 34 22 60 22 z" fill="#1abc9c" opacity=".85"/>
+        <ellipse cx="46" cy="52" rx="9" ry="12" fill="#ffffff" opacity=".45"/>
+        <circle cx="50" cy="72" r="6" fill="#0b3d34"/><circle cx="70" cy="72" r="6" fill="#0b3d34"/>
+        <path d="M50 88 q10 8 20 0" stroke="#0b3d34" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </g>`,
+    "Ghost": `<g>
+        <ellipse cx="60" cy="108" rx="26" ry="5" fill="#000" opacity=".25"/>
+        <path d="M60 18 C86 18 96 44 96 66 L96 96 L84 88 L72 98 L60 88 L48 98 L36 88 L24 96 L24 66 C24 44 34 18 60 18 z" fill="#dfe9f5" opacity=".92"/>
+        <circle cx="50" cy="56" r="6" fill="#1a2a44"/><circle cx="70" cy="56" r="6" fill="#1a2a44"/>
+        <ellipse cx="60" cy="76" rx="9" ry="12" fill="#1a2a44" opacity=".7"/>
+    </g>`,
+    "Demon Lord": `<g>
+        <ellipse cx="60" cy="110" rx="40" ry="7" fill="#000" opacity=".4"/>
+        <path d="M34 40 C20 18 34 8 44 20 L52 34 z M86 40 C100 18 86 8 76 20 L68 34 z" fill="#7b241c"/>
+        <path d="M40 66 C40 40 80 40 80 66 C80 86 68 96 60 96 C52 96 40 86 40 66 z" fill="#c0392b"/>
+        <path d="M46 60 l10 -4 l-10 8 z M74 60 l-10 -4 l10 8 z" fill="#f1c40f"/>
+        <path d="M46 78 q14 8 28 0" stroke="#7b241c" stroke-width="4" fill="none" stroke-linecap="round"/>
+        <path d="M40 70 L18 84 M80 70 L102 84" stroke="#c0392b" stroke-width="8" stroke-linecap="round"/>
+    </g>`,
+    "Elder Dragon": `<g>
+        <ellipse cx="60" cy="108" rx="42" ry="7" fill="#000" opacity=".4"/>
+        <path d="M30 44 C14 26 22 8 36 18 L48 34 z M90 44 C106 26 98 8 84 18 L72 34 z" fill="#7d6608"/>
+        <path d="M34 62 C34 38 86 38 86 62 C86 82 74 94 60 94 C46 94 34 82 34 62 z" fill="#7f8c29"/>
+        <circle cx="50" cy="58" r="6" fill="#f1c40f"/><circle cx="70" cy="58" r="6" fill="#f1c40f"/>
+        <circle cx="50" cy="58" r="2" fill="#1a1a2e"/><circle cx="70" cy="58" r="2" fill="#1a1a2e"/>
+        <path d="M40 76 h40 l-6 10 h-28 z" fill="#f5f5dc" opacity=".9"/>
+        <path d="M46 76 l4 10 l4 -10 z M58 76 l4 10 l4 -10 z M70 76 l4 10 l4 -10 z" fill="#fff"/>
+        <path d="M34 66 L14 78 M86 66 L106 78" stroke="#7f8c29" stroke-width="8" stroke-linecap="round"/>
+    </g>`,
+    "_default": `<g>
+        <ellipse cx="60" cy="106" rx="30" ry="6" fill="#000" opacity=".35"/>
+        <circle cx="60" cy="60" r="34" fill="#8e44ad"/>
+        <circle cx="50" cy="54" r="5" fill="#fff"/><circle cx="70" cy="54" r="5" fill="#fff"/>
+    </g>`
+};
+
+function monsterSvg(name) {
+    const art = MONSTER_ART[name] || MONSTER_ART["_default"];
+    return '<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' + art + "</svg>";
+}
+
+// Shows the enemy portrait during combat / on a live dungeon floor.
+// The sprite lurches when hit and slowly degrades as its HP drops.
+let lastEnemyHp = null;
+
+function renderStage(s) {
+    const stage = document.getElementById("combat-stage");
+    const enemy = s.enemy;
+    const showStage = !!enemy &&
+        (s.screen === "combat" || s.screen === "combat_item" || s.screen === "dungeon_floor");
+
+    document.body.classList.toggle("in-combat", !!(showStage || s.in_dungeon));
+
+    if (!showStage) {
+        stage.classList.remove("on");
+        stage.innerHTML = "";
+        lastEnemyHp = null;
+        return false;
+    }
+
+    const dmg = enemy.max_hp > 0
+        ? Math.max(0, Math.min(1, 1 - enemy.hp / enemy.max_hp))
+        : 0;
+    const hpPct = enemy.max_hp > 0 ? (enemy.hp / enemy.max_hp * 100) : 0;
+
+    stage.classList.add("on");
+    stage.innerHTML =
+        '<div class="monster" style="--dmg:' + dmg.toFixed(3) + '">' +
+            '<div class="monster-art">' + monsterSvg(enemy.name) + "</div>" +
+            '<div class="monster-info">' +
+                '<div class="monster-name">Lv.' + enemy.level + " " + enemy.name + "</div>" +
+                '<div id="ehp-bar"><div id="ehp-fill" style="width:' + hpPct.toFixed(1) + '%"></div></div>' +
+                '<div class="monster-hp">HP ' + enemy.hp + "/" + enemy.max_hp + " &nbsp; AC " + enemy.ac + "</div>" +
+            "</div>" +
+        "</div>";
+
+    if (lastEnemyHp !== null && enemy.hp < lastEnemyHp) {
+        const art = stage.querySelector(".monster-art");
+        art.classList.add("hit");
+        art.addEventListener("animationend", function () { art.classList.remove("hit"); });
+    }
+    lastEnemyHp = enemy.hp;
+    return true;
+}
+
+// -----------------------------
+// Rendering
+// -----------------------------
+
+let selectedIndex = 0;
+
+function clickOption(index) {
+    if (!currentState || !currentState.options || !currentState.options[index]) return;
+    selectedIndex = index;
+    handleClick(currentState.screen, index);
+}
+
+function moveSelection(step) {
+    const btns = document.querySelectorAll("#options button");
+    if (!btns.length) return;
+    selectedIndex = (selectedIndex + step + btns.length) % btns.length;
+    btns.forEach(function (b, i) { b.classList.toggle("selected", i === selectedIndex); });
+    btns[selectedIndex].scrollIntoView({ block: "nearest" });
+}
+
+document.addEventListener("keydown", function (ev) {
+    const tag = ev.target && ev.target.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+        moveSelection(ev.key === "ArrowDown" ? 1 : -1);
+        ev.preventDefault();
+        return;
+    }
+    if (ev.key === "Enter") {
+        clickOption(selectedIndex);
+        ev.preventDefault();
+        return;
+    }
+    const n = parseInt(ev.key, 10);
+    if (n >= 1 && currentState && currentState.options && n <= currentState.options.length) {
+        clickOption(n - 1);
+    }
+});
+
 function render(s) {
+    const prevScreen = currentState ? currentState.screen : null;
     currentState = s;
+    if (prevScreen !== s.screen) selectedIndex = 0;
     document.getElementById("screen-title").textContent = s.title || "";
 
     const body = document.getElementById("screen-body");
@@ -366,24 +659,34 @@ function render(s) {
         body.textContent = s.body || "";
     }
 
+    const stageShown = renderStage(s);
+    // The portrait already shows the monster's name, HP and AC - drop the
+    // duplicate first line so the body just shows the hero.
+    if (stageShown && body.textContent) {
+        body.textContent = body.textContent.replace(/^[^\n]*\n+/, "");
+    }
+
     const opts = document.getElementById("options");
     opts.innerHTML = "";
+    if (selectedIndex >= s.options.length) selectedIndex = 0;
     s.options.forEach((opt, i) => {
         const btn = document.createElement("button");
         btn.textContent = `> ${opt}`;
-        btn.addEventListener("click", () => handleClick(s.screen, i));
+        btn.classList.toggle("selected", i === selectedIndex);
+        btn.addEventListener("click", () => { selectedIndex = i; handleClick(s.screen, i); });
         opts.appendChild(btn);
     });
 
-    // Log
+    // Log - every message in the batch stays, newest at the bottom
     const log = document.getElementById("log");
     log.innerHTML = "";
-    const ts = new Date().toTimeString().slice(0, 8);
     (s.log || []).forEach(msg => {
         const p = document.createElement("p");
+        const ts = new Date().toTimeString().slice(0, 8);
         p.textContent = `[${ts}] ${msg}`;
         log.appendChild(p);
     });
+    log.scrollTop = log.scrollHeight;
 
     // Player sidebar
     if (s.player) {

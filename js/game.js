@@ -15,7 +15,9 @@ const gs = {
 };
 
 const TOWN_OPTIONS = ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"];
-const MENU_OPTIONS = ["New Game", "Load Game", "Quit"];
+// No "Quit" on the main menu: it never did anything, and everything else in
+// the game is reachable from the town screen's Quit option.
+const MENU_OPTIONS = ["New Game", "Load Game"];
 
 // -----------------------------
 // Response helpers
@@ -48,6 +50,17 @@ function townName() {
 }
 
 // Every response syncs the server-side screen with the one the client shows.
+function enemyJson(e) {
+    if (!e) return null;
+    return {
+        name: e.name,
+        level: e.level,
+        hp: e.hp,
+        max_hp: e.max_hp,
+        ac: e.ac
+    };
+}
+
 function respond(screen, title, body, options, extra) {
     gs.screen = screen;
     const out = {
@@ -56,6 +69,8 @@ function respond(screen, title, body, options, extra) {
         body: body,
         options: options,
         player: playerJson(gs.player),
+        enemy: enemyJson(gs.enemy),
+        in_dungeon: gs.dungeon_floor > 0,
         log: gs.log,
         current_location: gs.current_location
     };
@@ -261,7 +276,8 @@ function combatAction(choice) {
 
     // Attack
     if (choice === 0) {
-        gs.log = [webPlayerAttack(p, e)];
+        // The combat log accumulates: every exchange stays visible in the chat.
+        gs.log.push(webPlayerAttack(p, e));
 
         if (!e.is_alive()) return combatReward("Victory!");
 
@@ -298,7 +314,7 @@ function combatAction(choice) {
             gs.log = ["You fled successfully!"];
             return townRespond("Fled!", "What do you want to do?", gs.log);
         }
-        gs.log = ["Failed to flee!"];
+        gs.log.push("Failed to flee!");
         gs.log.push(webEnemyAttack(p, e));
         if (!p.is_alive()) {
             return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
@@ -335,14 +351,14 @@ function combatItemAction(choice) {
         const heal = 9;
         p.hp = Math.min(p.hp + heal, p.max_hp);
         p.remove_item(item);
-        gs.log = ["Drank Healing Potion! Restored " + heal + " HP."];
+        gs.log.push("Drank Healing Potion! Restored " + heal + " HP.");
     } else if (item.name === "Greater Healing Potion") {
         const heal = 20;
         p.hp = Math.min(p.hp + heal, p.max_hp);
         p.remove_item(item);
-        gs.log = ["Drank Greater Healing Potion! Restored " + heal + " HP."];
+        gs.log.push("Drank Greater Healing Potion! Restored " + heal + " HP.");
     } else {
-        gs.log = ["Cannot use " + item.name + " in combat yet."];
+        gs.log.push("Cannot use " + item.name + " in combat yet.");
 
         gs.log.push(webEnemyAttack(p, e));
 
@@ -460,7 +476,11 @@ function allocationAction(choice) {
     const chosen = STAT_ORDER[choice];
     p.stats[chosen] += 1;
     p.ac = p.calc_ac();
-    if (chosen === "CON") p.recalc_hp();
+    if (chosen === "CON") {
+        p.recalc_hp();
+        // A CON point raises max HP and heals the character to full.
+        p.hp = p.max_hp;
+    }
     p.skill_points -= 1;
     gs.log = [chosen + " increased to " + p.stats[chosen] + "!"];
 

@@ -58,6 +58,8 @@ The static version is a full PWA: it caches itself for offline play and can be i
 3. **Android / Chrome:** menu → *Add to Home screen*. **iOS / Safari:** Share → *Add to Home Screen*. **Desktop Chrome/Edge:** install icon in the address bar.
 4. Launch it — it works with no connection, and saves persist in the browser (localStorage).
 
+> **Saves are device-local.** Each browser on each device keeps its own characters — a save is not synced or backed up. It survives closing the app, rebooting and being offline, but it is **wiped** by "Clear cookies and site data" (and by uninstalling the app on Android), and it does not follow you to another device or browser.
+
 Files that make it a PWA:
 
 | File | Purpose |
@@ -82,6 +84,77 @@ After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v2`) so retu
 ## Controls
 
 Click the on-screen buttons to navigate. No keyboard input needed.
+
+Keyboard shortcuts (desktop, optional): `1`–`9` pick an option directly, `↑`/`↓` move the highlight and `Enter` selects it.
+
+## Character Options
+
+Stats are rolled first with **4d6-drop-lowest** (each stat lands on 3–18), then the race bonus is applied on top.
+
+### Races
+
+| Race | STR | DEX | CON | INT | WIS | CHA | Description |
+|---|---|---|---|---|---|---|---|
+| Human | +1 | +1 | +1 | +1 | +1 | +1 | Versatile and ambitious |
+| Elf | — | +2 | — | +1 | — | — | Graceful and perceptive |
+| Dwarf | +1 | — | +2 | — | — | — | Tough and resilient |
+| Halfling | — | +2 | — | — | — | +1 | Lucky and nimble |
+
+### Classes
+
+| Class | Base HP | HP per level | Primary stat | Starting weapon | Starting armor | Potions |
+|---|---|---|---|---|---|---|
+| Fighter | 10 | +4 | STR | Longsword (+1 STR) | Chainmail (medium) | 6 × Healing Potion |
+| Rogue | 8 | +3 | DEX | Dagger (+1 DEX) | Leather (light) | 6 × Healing Potion |
+| Wizard | 6 | +2 | INT | Magic Staff | *none* | 6 × Healing Potion |
+| Cleric | 8 | +3 | WIS | Mace (+1 STR) | Plate (heavy) | 6 × Healing Potion |
+
+### Starting health and armour class
+
+| Class | HP at level 1 | AC range | AC formula |
+|---|---|---|---|
+| Fighter | 10 + CON mod | 14 – 16 | `14 + min(DEX mod, 2)` — Chainmail is medium, DEX capped at +2 |
+| Rogue | 8 + CON mod | 8 – 17 | `11 + DEX mod` — Leather is light, and the Dagger's +1 DEX counts |
+| Wizard | 6 + CON mod | 7 – 16 | `10 + DEX mod` — no armour, so full DEX applies |
+| Cleric | 8 + CON mod | 17 (flat) | `17` — Plate is heavy, DEX is ignored |
+
+`CON mod = floor((CON - 10) / 2)` and `DEX mod = floor((DEX - 10) / 2)`.
+A CON point raises max HP **and heals you to full** when you spend it.
+
+### What each stat does
+
+| Stat | Effect | Formula |
+|---|---|---|
+| **STR** | Melee attack rolls & damage | `STR mod` added to the attack roll and to damage |
+| **DEX** | Ranged/finesse attack & damage, **Armour Class** | See the AC formulas above |
+| **CON** | **Max HP** | Each CON modifier point adds `+1 HP per level` |
+| **INT** | *No effect yet* — reserved for Wizard spells | — |
+| **WIS** | *No effect yet* — reserved for Cleric spells | — |
+| **CHA** | *No effect yet* | — |
+
+### Levelling
+
+| Event | Effect |
+|---|---|
+| XP to reach the next level | `level × 100` |
+| HP on level up | class HP per level **+2 per CON modifier point**, then healed to full |
+| Gold on level up | `new level × 10` |
+| Skill points | +1 per level, **+5 extra** on levels 4, 8, 12, … |
+| Spending a skill point | +1 to any stat; CON also raises max HP and heals to full |
+
+### Equipment stat bonuses
+
+| Item | Bonus |
+|---|---|
+| Longsword, Battle Axe, War Hammer, Mace, Flail, Spear, Quarterstaff | +1 STR |
+| Greatsword | +2 STR |
+| Rapier, Dagger, Shortbow, Longbow, Crossbow, Hand Crossbow | +1 DEX |
+| Studded Leather | +1 DEX |
+| Arcane Staff | +1 INT |
+| Wizard Robe | +9 INT ⚠️ |
+| Dragon Scale | +8 CON ⚠️ |
+
+> ⚠️ Those last two look like typos in the item data (+9 INT / +8 CON instead of +1). They are reproduced exactly as the game data has them, so Wizard Robe adds +4 to INT's modifier and Dragon Scale adds +4 CON per level. Worth fixing in `items.py` **and** `js/items.js`.
 
 ## Tech Stack
 
