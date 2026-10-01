@@ -7,6 +7,8 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 ## Current Features
 
 - **Character creation** — choose race (Human/Elf/Dwarf/Halfling) and class (Fighter/Rogue/Wizard/Cleric), stats rolled via 4d6-drop-lowest
+- **Forgiving start** — every class gets +5 base HP and a full pack of 15 Healing Potions
+- **Loot** — kills pay 40% more XP and 60% more gold
 - **Turn-based combat** — attack, use items, or flee against level-scaled enemies (no fleeing in dungeon)
 - **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
 - **Skill point leveling** — 1 skill point per level, 5 points on levels 4/8/12/…, freely distribute across all 6 stats
@@ -104,19 +106,21 @@ Stats are rolled first with **4d6-drop-lowest** (each stat lands on 3–18), the
 
 | Class | Base HP | HP per level | Primary stat | Starting weapon | Starting armor | Potions |
 |---|---|---|---|---|---|---|
-| Fighter | 10 | +4 | STR | Longsword (+1 STR) | Chainmail (medium) | 6 × Healing Potion |
-| Rogue | 8 | +3 | DEX | Dagger (+1 DEX) | Leather (light) | 6 × Healing Potion |
-| Wizard | 6 | +2 | INT | Magic Staff | *none* | 6 × Healing Potion |
-| Cleric | 8 | +3 | WIS | Mace (+1 STR) | Plate (heavy) | 6 × Healing Potion |
+| Fighter | 15 | +4 | STR | Longsword (+1 STR) | Chainmail (medium) | 15 × Healing Potion |
+| Rogue | 13 | +3 | DEX | Dagger (+1 DEX) | Leather (light) | 15 × Healing Potion |
+| Wizard | 11 | +2 | INT | Magic Staff | *none* | 15 × Healing Potion |
+| Cleric | 13 | +3 | WIS | Mace (+1 STR) | Plate (heavy) | 15 × Healing Potion |
+
+Every class begins with a **full pack of 15 Healing Potions**, so the first monster is a warm-up rather than a coin flip.
 
 ### Starting health and armour class
 
 | Class | HP at level 1 | AC range | AC formula |
 |---|---|---|---|
-| Fighter | 10 + CON mod | 14 – 16 | `14 + min(DEX mod, 2)` — Chainmail is medium, DEX capped at +2 |
-| Rogue | 8 + CON mod | 8 – 17 | `11 + DEX mod` — Leather is light, and the Dagger's +1 DEX counts |
-| Wizard | 6 + CON mod | 7 – 16 | `10 + DEX mod` — no armour, so full DEX applies |
-| Cleric | 8 + CON mod | 17 (flat) | `17` — Plate is heavy, DEX is ignored |
+| Fighter | 15 + CON mod | 14 – 16 | `14 + min(DEX mod, 2)` — Chainmail is medium, DEX capped at +2 |
+| Rogue | 13 + CON mod | 8 – 17 | `11 + DEX mod` — Leather is light, and the Dagger's +1 DEX counts |
+| Wizard | 11 + CON mod | 7 – 16 | `10 + DEX mod` — no armour, so full DEX applies |
+| Cleric | 13 + CON mod | 17 (flat) | `17` — Plate is heavy, DEX is ignored |
 
 `CON mod = floor((CON - 10) / 2)` and `DEX mod = floor((DEX - 10) / 2)`.
 A CON point raises max HP **and heals you to full** when you spend it.
@@ -142,6 +146,22 @@ A CON point raises max HP **and heals you to full** when you spend it.
 | Skill points | +1 per level, **+5 extra** on levels 4, 8, 12, … |
 | Spending a skill point | +1 to any stat; CON also raises max HP and heals to full |
 
+### Combat rewards
+
+Kills pay out **40% more XP and 60% more gold** than the original tuning (the multipliers are `XP_REWARD_MULTIPLIER = 1.4` and `GOLD_REWARD_MULTIPLIER = 1.6` in `enemy.py` / `js/enemy.js`, so you can retune in one place).
+
+| Monster | Base XP | Base gold | XP at Lv.1 | Gold at Lv.1 | XP at Lv.5 | Gold at Lv.5 |
+|---|---|---|---|---|---|---|
+| Goblin | 30 | 8 | 21 | 12 | 105 | 64 |
+| Spider | 50 | 4 | 35 | 6 | 175 | 32 |
+| Slime | 40 | 3 | 28 | 4 | 140 | 24 |
+| Zombie / Skeleton / Wolf | 50 | 5 – 6 | 35 | 8 – 9 | 175 | 40 – 48 |
+| Ghost | 80 | 10 | 56 | 16 | 280 | 80 |
+| Demon Lord (boss) | 200 | 50 | 140 | 80 | 700 | 400 |
+| Elder Dragon (boss) | 250 | 80 | 175 | 128 | 875 | 640 |
+
+`XP = base XP × level ÷ 2 × 1.4`, `gold = base gold × level × 1.6`, both rounded to whole numbers. Clearing the dungeon still adds a flat **+500 gold / +500 XP** boss bonus on floor 10.
+
 ### Equipment stat bonuses
 
 | Item | Bonus |
@@ -155,6 +175,21 @@ A CON point raises max HP **and heals you to full** when you spend it.
 | Dragon Scale | +8 CON ⚠️ |
 
 > ⚠️ Those last two look like typos in the item data (+9 INT / +8 CON instead of +1). They are reproduced exactly as the game data has them, so Wizard Robe adds +4 to INT's modifier and Dragon Scale adds +4 CON per level. Worth fixing in `items.py` **and** `js/items.js`.
+
+### Colour palette
+
+| Role | Colour |
+|---|---|
+| Page background | `#0b0b0c` near-black |
+| Panels, cards, log | `#151517` / `#1e1e21` / `#0e0e0f` dark grey |
+| Borders and dividers | `#2e2e33` |
+| Body text | `#d6d6d6` light grey |
+| Muted text (log, hints) | `#8a8a8a` |
+| **Gold** — titles, borders, XP bar, map town | `#c9a84c` (hover `#dbb95c`) |
+| **Emerald** — HP bar, map villages, village labels | `#2fbf71` (light `#5fd39a`) |
+| Red — enemy HP bar and danger states | `#c0392b` / `#e74c3c` |
+
+The nine monster portraits keep their own colours (they are creatures, not chrome), and the PWA theme colour, manifest background and app icons all use the same near-black `#0b0b0c`.
 
 ## Tech Stack
 

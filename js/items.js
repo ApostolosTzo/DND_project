@@ -91,11 +91,14 @@ const ITEMS = {
     "Arcane Ring": new Item("Arcane Ring", "A ring humming with magic", null, { INT: 1 })
 };
 
+// Every class starts with a full pack of healing potions.
+const STARTING_POTIONS = Array(15).fill("Healing Potion");
+
 const STARTING_GEAR = {
-    "Fighter": { weapon: "Longsword", armor: "Chainmail", items: ["Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion"] },
-    "Rogue": { weapon: "Dagger", armor: "Leather", items: ["Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion"] },
-    "Wizard": { weapon: "Magic Staff", armor: null, items: ["Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion"] },
-    "Cleric": { weapon: "Mace", armor: "Plate", items: ["Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion", "Healing Potion"] }
+    "Fighter": { weapon: "Longsword", armor: "Chainmail", items: STARTING_POTIONS.slice() },
+    "Rogue": { weapon: "Dagger", armor: "Leather", items: STARTING_POTIONS.slice() },
+    "Wizard": { weapon: "Magic Staff", armor: null, items: STARTING_POTIONS.slice() },
+    "Cleric": { weapon: "Mace", armor: "Plate", items: STARTING_POTIONS.slice() }
 };
 
 function getItem(name) {

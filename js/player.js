@@ -8,10 +8,10 @@ const RACES = {
 };
 
 const CLASSES = {
-    "Fighter": { desc: "Master of martial combat", hp: 10, primary: "STR" },
-    "Rogue": { desc: "Sneaky and dextrous", hp: 8, primary: "DEX" },
-    "Wizard": { desc: "Wielder of arcane magic", hp: 6, primary: "INT" },
-    "Cleric": { desc: "Servant of the divine", hp: 8, primary: "WIS" }
+    "Fighter": { desc: "Master of martial combat", hp: 15, primary: "STR" },
+    "Rogue": { desc: "Sneaky and dextrous", hp: 13, primary: "DEX" },
+    "Wizard": { desc: "Wielder of arcane magic", hp: 11, primary: "INT" },
+    "Cleric": { desc: "Servant of the divine", hp: 13, primary: "WIS" }
 };
 
 const STAT_ORDER = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];

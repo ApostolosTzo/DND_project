@@ -89,11 +89,14 @@ ITEMS = {
     "Arcane Ring": Item("Arcane Ring", "A ring humming with magic", None, {"INT": 1}),
 }
 
+# Every class starts with a full pack of healing potions.
+STARTING_POTIONS = ["Healing Potion"] * 15
+
 STARTING_GEAR = {
-    "Fighter": {"weapon": "Longsword", "armor": "Chainmail", "items": ["Healing Potion", "Healing Potion", "Healing Potion","Healing Potion", "Healing Potion", "Healing Potion"]},
-    "Rogue": {"weapon": "Dagger", "armor": "Leather", "items": ["Healing Potion", "Healing Potion", "Healing Potion","Healing Potion", "Healing Potion", "Healing Potion"]},
-    "Wizard": {"weapon": "Magic Staff", "armor": None, "items": ["Healing Potion", "Healing Potion", "Healing Potion","Healing Potion", "Healing Potion", "Healing Potion"]},
-    "Cleric": {"weapon": "Mace", "armor": "Plate", "items": ["Healing Potion", "Healing Potion", "Healing Potion","Healing Potion", "Healing Potion", "Healing Potion"]},
+    "Fighter": {"weapon": "Longsword", "armor": "Chainmail", "items": list(STARTING_POTIONS)},
+    "Rogue": {"weapon": "Dagger", "armor": "Leather", "items": list(STARTING_POTIONS)},
+    "Wizard": {"weapon": "Magic Staff", "armor": None, "items": list(STARTING_POTIONS)},
+    "Cleric": {"weapon": "Mace", "armor": "Plate", "items": list(STARTING_POTIONS)},
 }
 
 def get_item(name):

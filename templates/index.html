@@ -6,8 +6,8 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #1a1a2e;
-            color: #e0e0e0;
+            background: #0b0b0c;
+            color: #d6d6d6;
             font-family: 'Courier New', monospace;
             min-height: 100vh;
             display: flex;
@@ -41,22 +41,22 @@
         }
         #right {
             flex: 1;
-            background: #16213e;
+            background: #151517;
             padding: 15px;
             border-radius: 8px;
             font-size: 0.85em;
             min-width: 220px;
         }
-        #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #2e2e33; padding-bottom: 4px; }
         #right p { margin: 4px 0; }
-        #right .stat { color: #a8d8ea; }
-        #right .val  { color: #e0e0e0; float: right; }
+        #right .stat { color: #9a9aa0; }
+        #right .val  { color: #d6d6d6; float: right; }
         #screen-title {
             color: #c9a84c;
             font-size: 1.2em;
             margin-bottom: 10px;
             padding-bottom: 6px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #2e2e33;
         }
         #screen-body {
             white-space: pre-wrap;
@@ -64,7 +64,7 @@
             margin-bottom: 15px;
             line-height: 1.5;
             padding: 10px;
-            background: #16213e;
+            background: #151517;
             border-radius: 6px;
             min-height: 80px;
         }
@@ -74,9 +74,9 @@
             gap: 6px;
         }
         #options button {
-            background: #0f3460;
-            color: #e0e0e0;
-            border: 1px solid #333;
+            background: #1e1e21;
+            color: #d6d6d6;
+            border: 1px solid #2e2e33;
             padding: 10px 15px;
             font-family: 'Courier New', monospace;
             font-size: 0.95em;
@@ -85,24 +85,24 @@
             border-radius: 4px;
             transition: 0.2s;
         }
-        #options button:hover { background: #1a5276; border-color: #c9a84c; }
-        #options button:active { background: #0b2545; }
+        #options button:hover { background: #2a2a2e; border-color: #c9a84c; }
+        #options button:active { background: #242428; }
         #log {
             margin-top: 15px;
             padding: 10px;
-            background: #111;
+            background: #0e0e0f;
             border-radius: 6px;
             font-size: 0.8em;
-            color: #aaa;
+            color: #8a8a8a;
             min-height: 40px;
             max-height: 100px;
             overflow-y: auto;
         }
         #log p { margin: 2px 0; }
-        #log p:first-child { color: #e0e0e0; }
+        #log p:first-child { color: #d6d6d6; }
         #map-container {
             margin-top: 15px;
-            background: #16213e;
+            background: #151517;
             border-radius: 6px;
             padding: 8px;
             width: 100%;
@@ -113,49 +113,49 @@
             display: block;
         }
         #create-form { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
-        #create-form label { color: #a8d8ea; font-size: 0.9em; }
+        #create-form label { color: #9a9aa0; font-size: 0.9em; }
         #create-form input, #create-form select {
-            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            background: #1e1e21; color: #d6d6d6; border: 1px solid #2e2e33;
             padding: 8px 10px; font-family: 'Courier New', monospace; font-size: 0.95em;
             border-radius: 4px; width: 100%;
         }
-        #create-form select option { background: #16213e; }
+        #create-form select option { background: #151517; }
         #create-form button {
-            background: #c9a84c; color: #1a1a2e; border: none;
+            background: #c9a84c; color: #0b0b0c; border: none;
             padding: 10px; font-size: 1em; cursor: pointer;
             border-radius: 4px; font-family: 'Courier New', monospace; margin-top: 6px;
         }
         #create-form button:hover { background: #dbb95c; }
         #info-box {
-            background: #0f3460; border: 1px solid #333; border-radius: 6px;
+            background: #1e1e21; border: 1px solid #2e2e33; border-radius: 6px;
             padding: 10px; margin-top: 6px; font-size: 0.85em; min-height: 40px;
         }
-        #info-box .label { color: #a8d8ea; }
-        #info-box .value { color: #e0e0e0; float: right; }
+        #info-box .label { color: #9a9aa0; }
+        #info-box .value { color: #d6d6d6; float: right; }
         #hp-bar {
-            background: #333; height: 8px; border-radius: 4px; margin: 6px 0; overflow: hidden;
+            background: #2e2e33; height: 8px; border-radius: 4px; margin: 6px 0; overflow: hidden;
         }
-        #hp-bar div { background: #27ae60; height: 100%; transition: width 0.3s; }
+        #hp-bar div { background: #2fbf71; height: 100%; transition: width 0.3s; }
         #xp-bar {
-            background: #333; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
+            background: #2e2e33; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
         }
-        #xp-bar div { background: #a8d8ea; height: 100%; transition: width 0.3s; }
+        #xp-bar div { background: #9a9aa0; height: 100%; transition: width 0.3s; }
         #buy-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8); justify-content: center; align-items: center;
         }
         #buy-box {
-            background: #16213e; padding: 25px; border-radius: 10px;
+            background: #151517; padding: 25px; border-radius: 10px;
             border: 1px solid #c9a84c; text-align: center; min-width: 300px;
         }
         #buy-box h3 { color: #c9a84c; margin-bottom: 15px; }
         #buy-box input {
-            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            background: #1e1e21; color: #d6d6d6; border: 1px solid #2e2e33;
             padding: 8px; font-size: 1.1em; width: 80px; text-align: center;
             border-radius: 4px; font-family: 'Courier New', monospace;
         }
         #buy-box button {
-            background: #c9a84c; color: #1a1a2e; border: none; padding: 8px 20px;
+            background: #c9a84c; color: #0b0b0c; border: none; padding: 8px 20px;
             margin: 5px; font-size: 0.95em; cursor: pointer; border-radius: 4px;
             font-family: 'Courier New', monospace;
         }
@@ -193,7 +193,7 @@
 <div id="buy-overlay">
     <div id="buy-box">
         <h3 id="buy-title">Buy</h3>
-        <p id="buy-info" style="margin-bottom:12px;color:#aaa;"></p>
+        <p id="buy-info" style="margin-bottom:12px;color:#8a8a8a;"></p>
         <div><input type="number" id="buy-qty" value="1" min="1"></div>
         <div style="margin-top:12px;">
             <button onclick="buyConfirm()">Buy</button>
@@ -233,7 +233,7 @@ function drawMap(currentId) {
     }
     const locs = mapLocations;
     const current = locs[currentId];
-    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#16213e" rx="4"/>`;
+    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#151517" rx="4"/>`;
     const drawn = new Set();
     for (const [id, loc] of Object.entries(locs)) {
         for (const target of loc.connects_to) {
@@ -241,7 +241,7 @@ function drawMap(currentId) {
             if (drawn.has(key)) continue;
             drawn.add(key);
             const t = locs[target];
-            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#555" stroke-width="2"/>`;
+            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#3a3a40" stroke-width="2"/>`;
         }
     }
     for (const [id, loc] of Object.entries(locs)) {
@@ -250,18 +250,18 @@ function drawMap(currentId) {
         const canReach = isCurrent || isConnected;
         const opacity = canReach ? 1 : 0.35;
         const r = isCurrent ? 12 : 7;
-        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#5dade2";
-        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#2fbf71";
+        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
         if (isCurrent) {
             svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
         }
         const clickable = isConnected && !isCurrent;
         svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}"${clickable ? ' style="cursor:pointer" onclick="travel(\'' + id + '\')"' : ""}/>`;
         const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
-        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
         svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
     }
-    svg += `<text x="12" y="22" fill="#a8d8ea" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
+    svg += `<text x="12" y="22" fill="#9a9aa0" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
     svg += "</svg>";
     container.innerHTML = svg;
 }

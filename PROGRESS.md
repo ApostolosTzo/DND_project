@@ -688,19 +688,19 @@ Stats are rolled with **4d6-drop-lowest** (each 3–18), then the race bonus is 
 
 | Class | Base HP | HP per level | Primary stat | Starting weapon | Starting armor | Potions |
 |---|---|---|---|---|---|---|
-| Fighter | 10 | +4 | STR | Longsword (+1 STR) | Chainmail (medium) | 6 × Healing Potion |
-| Rogue | 8 | +3 | DEX | Dagger (+1 DEX) | Leather (light) | 6 × Healing Potion |
-| Wizard | 6 | +2 | INT | Magic Staff | *none* | 6 × Healing Potion |
-| Cleric | 8 | +3 | WIS | Mace (+1 STR) | Plate (heavy) | 6 × Healing Potion |
+| Fighter | 15 | +4 | STR | Longsword (+1 STR) | Chainmail (medium) | 15 × Healing Potion |
+| Rogue | 13 | +3 | DEX | Dagger (+1 DEX) | Leather (light) | 15 × Healing Potion |
+| Wizard | 11 | +2 | INT | Magic Staff | *none* | 15 × Healing Potion |
+| Cleric | 13 | +3 | WIS | Mace (+1 STR) | Plate (heavy) | 15 × Healing Potion |
 
 ### Starting health and armour class
 
 | Class | HP at level 1 | AC range | AC formula |
 |---|---|---|---|
-| Fighter | 10 + CON mod | 14 – 16 | `14 + min(DEX mod, 2)` — Chainmail, medium (DEX capped at +2) |
-| Rogue | 8 + CON mod | 8 – 17 | `11 + DEX mod` — Leather, light (the Dagger's +1 DEX counts) |
-| Wizard | 6 + CON mod | 7 – 16 | `10 + DEX mod` — no armour |
-| Cleric | 8 + CON mod | 17 flat | `17` — Plate, heavy (DEX ignored) |
+| Fighter | 15 + CON mod | 14 – 16 | `14 + min(DEX mod, 2)` — Chainmail, medium (DEX capped at +2) |
+| Rogue | 13 + CON mod | 8 – 17 | `11 + DEX mod` — Leather, light (the Dagger's +1 DEX counts) |
+| Wizard | 11 + CON mod | 7 – 16 | `10 + DEX mod` — no armour |
+| Cleric | 13 + CON mod | 17 flat | `17` — Plate, heavy (DEX ignored) |
 
 Modifiers are `floor((stat - 10) / 2)`. Max HP is
 `class HP + (level - 1) × HP per level + CON mod × level`.
@@ -726,6 +726,20 @@ Modifiers are `floor((stat - 10) / 2)`. Max HP is
 | Skill points | +1 per level, +5 extra at levels 4, 8, 12, … |
 | Combat accuracy | `d20 + proficiency + stat mod` vs target AC, proficiency `= floor((level - 1) / 4) + 2` |
 
+### Combat rewards
+
+Kills pay **+40% XP** and **+60% gold** (`XP_REWARD_MULTIPLIER = 1.4`, `GOLD_REWARD_MULTIPLIER = 1.6`), rounded to whole numbers.
+
+| Monster | Base XP | Base gold | XP at Lv.1 | Gold at Lv.1 | XP at Lv.5 | Gold at Lv.5 |
+|---|---|---|---|---|---|---|
+| Goblin | 30 | 8 | 21 | 12 | 105 | 64 |
+| Spider | 50 | 4 | 35 | 6 | 175 | 32 |
+| Slime | 40 | 3 | 28 | 4 | 140 | 24 |
+| Zombie / Skeleton / Wolf | 50 | 5 – 6 | 35 | 8 – 9 | 175 | 40 – 48 |
+| Ghost | 80 | 10 | 56 | 16 | 280 | 80 |
+| Demon Lord (boss) | 200 | 50 | 140 | 80 | 700 | 400 |
+| Elder Dragon (boss) | 250 | 80 | 175 | 128 | 875 | 640 |
+
 ### Equipment stat bonuses
 
 | Item | Bonus |
@@ -739,6 +753,88 @@ Modifiers are `floor((stat - 10) / 2)`. Max HP is
 | Dragon Scale | +8 CON ⚠️ |
 
 > ⚠️ `Wizard Robe` (+9 INT) and `Dragon Scale` (+8 CON) look like typos for +1 in the item data — that's +4 to the modifier, and Dragon Scale grants +4 CON per level. Reproduced as-is in both `items.py` and `js/items.js`; worth fixing in both.
+
+## Difficulty Tuning & New Colour Palette
+
+### Balance changes
+
+**1. +5 base HP for every class.** Dying to the very first monster was the complaint, so `CLASSES[...]` went up by 5 across the board. Because `recalc_hp()` rebuilds max HP from the class value, this lifts every level, not just level 1.
+
+| Class | Before | After |
+|---|---|---|
+| Fighter | 10 | 15 |
+| Rogue | 8 | 13 |
+| Wizard | 6 | 11 |
+| Cleric | 8 | 13 |
+
+**2. 15 Healing Potions at the start** (was 6), for every class. The repeated `"Healing Potion", "Healing Potion", …` lists in `STARTING_GEAR` were replaced with a single source of truth so the count only has to change in one place:
+
+```python
+STARTING_POTIONS = ["Healing Potion"] * 15          # Python
+STARTING_GEAR = {"Fighter": {..., "items": list(STARTING_POTIONS)}, ...}
+```
+```js
+const STARTING_POTIONS = Array(15).fill("Healing Potion");   // JS
+```
+
+**3. +40% XP and +60% gold** from every kill, as named constants in `enemy.py` / `js/enemy.js` so the balance is retunable in one spot:
+
+```python
+XP_REWARD_MULTIPLIER = 1.4    # +40% XP
+GOLD_REWARD_MULTIPLIER = 1.6  # +60% gold
+```
+
+**Floating point trap:** the original formula was `xp_reward = t["xp"] * (level/2)`, which is already a float in Python 3. Multiplying that by 1.4 produced things like `35.000000000000004`, which the log would print verbatim. Both builds now round:
+
+```python
+self.xp_reward = int(t["xp"] * (level / 2) * XP_REWARD_MULTIPLIER)
+```
+```js
+this.xp_reward = Math.floor(t.xp * (level / 2) * XP_REWARD_MULTIPLIER);
+```
+```python
+def gold_drop(self):
+    return int(TEMPLATES[self.name]["gold"] * self.level * GOLD_REWARD_MULTIPLIER)
+```
+
+A test now walks every monster at levels 1–15 asserting both rewards stay whole numbers.
+
+### New palette: black / grey / gold / emerald
+
+The navy-blue theme (`#1a1a2e`, `#16213e`, `#0f3460`, `#a8d8ea`, `#5dade2`, `#85c1e9`) was replaced everywhere in **both** UIs — the PWA `index.html` and the Flask `templates/index.html` — so the two builds no longer look like different games.
+
+| Old | New | Used for |
+|---|---|---|
+| `#1a1a2e` | `#0b0b0c` | page background |
+| `#16213e` | `#151517` | panels, combat stage, map background |
+| `#0f3460` | `#1e1e21` | buttons, inputs, info box |
+| `#1a5276` / `#0b2545` | `#2a2a2e` / `#242428` | button hover / active |
+| `#111` | `#0e0e0f` | log background |
+| `#333` | `#2e2e33` | borders, dividers |
+| `#a8d8ea` | `#9a9aa0` | sidebar labels, muted text |
+| `#aaa` | `#8a8a8a` | log text |
+| `#555` | `#3a3a40` | map roads |
+| `#5dade2` / `#85c1e9` | `#2fbf71` / `#5fd39a` | **emerald** village nodes and labels |
+| `#27ae60` | `#2fbf71` | HP bar |
+| `#e0e0e0` | `#d6d6d6` | body text |
+
+Kept: gold `#c9a84c` / `#dbb95c` (titles, borders, town node, XP bar, buttons) and red `#c0392b` / `#e74c3c` (enemy HP, danger).
+
+Also updated: `manifest.json` theme/background colour, and the four placeholder icons were regenerated in the new colours (near-black background, gold diamond, **emerald** centre pip). The monster portraits keep their own creature colours, and their drop shadows moved from `#000` to `#33333a` — pure black is invisible on a near-black panel.
+
+The colour swap was done with a single scripted pass (`.NET UTF-8 read/write without BOM`) so the `⚔` and `×` characters in the files survive; verified afterwards that every touched file is still valid UTF-8 with no BOM.
+
+### Files changed
+- `player.py`, `js/player.js` — `CLASSES` base HP +5
+- `items.py`, `js/items.js` — `STARTING_POTIONS` (15), de-duplicated `STARTING_GEAR`
+- `enemy.py`, `js/enemy.js` — reward multipliers + integer rounding
+- `index.html`, `templates/index.html` — full palette swap, monster shadow colour
+- `manifest.json`, `icons/*.png` — new theme colour and icons
+- `sw.js` — `CACHE_VERSION` → `dnd-pwa-v3`
+- `README.md`, `PROGRESS.md` — updated tables + new sections
+
+### Noted, not changed
+The floor-10 boss bonus is still a flat **+500 gold / +500 XP** on top of the (now much larger) boss kill reward. At level 10 an Elder Dragon alone pays 1750 XP, so the bonus is proportionally small. Easy to scale it in `combat_reward()` if you want.
 
 ## To Do
 - **Export / import saves** as a file (see "Saves: where they live" above) so characters can be backed up and moved between devices

@@ -14,6 +14,10 @@ const TEMPLATES = {
 
 const BOSS_NAMES = ["Demon Lord", "Elder Dragon"];
 
+// Rewards are multiplied by these before being rounded to whole numbers.
+const XP_REWARD_MULTIPLIER = 1.4;   // +40% XP
+const GOLD_REWARD_MULTIPLIER = 1.6; // +60% gold
+
 function Enemy(name, level) {
     this.name = name;
     this.level = level;
@@ -25,7 +29,9 @@ function Enemy(name, level) {
     const num_dice = Math.floor((level - 1) / 4) + 1;
     this.damage_dice = num_dice + t.dice;
     this.damage_bonus = t.bonus + Math.floor((level - 1) / 2);
-    this.xp_reward = t.xp * (level / 2);
+    // Math.floor keeps the reward a whole number - without it floating point
+    // would show things like "35.000000000000004 XP" in the log.
+    this.xp_reward = Math.floor(t.xp * (level / 2) * XP_REWARD_MULTIPLIER);
 }
 
 Enemy.prototype.display = function () {
@@ -33,7 +39,7 @@ Enemy.prototype.display = function () {
 };
 
 Enemy.prototype.gold_drop = function () {
-    return TEMPLATES[this.name].gold * this.level;
+    return Math.floor(TEMPLATES[this.name].gold * this.level * GOLD_REWARD_MULTIPLIER);
 };
 
 Enemy.prototype.attack_damage = function () {

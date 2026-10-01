@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>DND Terminal</title>
     <meta name="description" content="A browser-based Dungeons &amp; Dragons-style RPG with world map, dungeon crawling and turn-based combat.">
-    <meta name="theme-color" content="#1a1a2e">
+    <meta name="theme-color" content="#0b0b0c">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="icons/icon-192.png">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -16,8 +16,8 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #1a1a2e;
-            color: #e0e0e0;
+            background: #0b0b0c;
+            color: #d6d6d6;
             font-family: 'Courier New', monospace;
             min-height: 100vh;
             display: flex;
@@ -51,22 +51,22 @@
         }
         #right {
             flex: 1;
-            background: #16213e;
+            background: #151517;
             padding: 15px;
             border-radius: 8px;
             font-size: 0.85em;
             min-width: 220px;
         }
-        #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #2e2e33; padding-bottom: 4px; }
         #right p { margin: 4px 0; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-        #right .stat { color: #a8d8ea; }
-        #right .val  { color: #e0e0e0; text-align: right; }
+        #right .stat { color: #9a9aa0; }
+        #right .val  { color: #d6d6d6; text-align: right; }
         #screen-title {
             color: #c9a84c;
             font-size: 1.2em;
             margin-bottom: 10px;
             padding-bottom: 6px;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid #2e2e33;
         }
         #screen-body {
             white-space: pre-wrap;
@@ -74,7 +74,7 @@
             margin-bottom: 15px;
             line-height: 1.5;
             padding: 10px;
-            background: #16213e;
+            background: #151517;
             border-radius: 6px;
             min-height: 80px;
         }
@@ -84,9 +84,9 @@
             gap: 6px;
         }
         #options button {
-            background: #0f3460;
-            color: #e0e0e0;
-            border: 1px solid #333;
+            background: #1e1e21;
+            color: #d6d6d6;
+            border: 1px solid #2e2e33;
             padding: 12px 16px;
             min-height: 46px;
             font-family: 'Courier New', monospace;
@@ -97,30 +97,30 @@
             transition: 0.2s;
             touch-action: manipulation;
         }
-        #options button:hover { background: #1a5276; border-color: #c9a84c; }
-        #options button:active { background: #0b2545; }
+        #options button:hover { background: #2a2a2e; border-color: #c9a84c; }
+        #options button:active { background: #242428; }
         #options button.selected {
             border-color: #c9a84c;
-            background: #1a5276;
+            background: #2a2a2e;
             box-shadow: inset 4px 0 0 #c9a84c;
         }
-        .hint { color: #5a6b8c; font-size: 0.72em; margin-top: 8px; text-align: right; }
+        .hint { color: #6a6a70; font-size: 0.72em; margin-top: 8px; text-align: right; }
         #log {
             margin-top: 15px;
             padding: 10px;
-            background: #111;
+            background: #0e0e0f;
             border-radius: 6px;
             font-size: 0.8em;
-            color: #aaa;
+            color: #8a8a8a;
             min-height: 40px;
             max-height: 100px;
             overflow-y: auto;
         }
         #log p { margin: 2px 0; }
-        #log p:first-child { color: #e0e0e0; }
+        #log p:first-child { color: #d6d6d6; }
         #map-container {
             margin-top: 15px;
-            background: #16213e;
+            background: #151517;
             border-radius: 6px;
             padding: 8px;
             width: 100%;
@@ -131,50 +131,50 @@
             display: block;
         }
         #create-form { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
-        #create-form label { color: #a8d8ea; font-size: 0.9em; }
+        #create-form label { color: #9a9aa0; font-size: 0.9em; }
         #create-form input, #create-form select {
-            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            background: #1e1e21; color: #d6d6d6; border: 1px solid #2e2e33;
             padding: 8px 10px; font-family: 'Courier New', monospace; font-size: 0.95em;
             border-radius: 4px; width: 100%;
         }
-        #create-form select option { background: #16213e; }
+        #create-form select option { background: #151517; }
         #create-form button {
-            background: #c9a84c; color: #1a1a2e; border: none;
+            background: #c9a84c; color: #0b0b0c; border: none;
             padding: 10px; font-size: 1em; cursor: pointer;
             border-radius: 4px; font-family: 'Courier New', monospace; margin-top: 6px;
         }
         #create-form button:hover { background: #dbb95c; }
         #info-box {
-            background: #0f3460; border: 1px solid #333; border-radius: 6px;
+            background: #1e1e21; border: 1px solid #2e2e33; border-radius: 6px;
             padding: 10px; margin-top: 6px; font-size: 0.85em; min-height: 40px;
         }
-        #info-box .label { color: #a8d8ea; }
-        #info-box .value { color: #e0e0e0; float: right; }
+        #info-box .label { color: #9a9aa0; }
+        #info-box .value { color: #d6d6d6; float: right; }
         #hp-bar {
-            background: #333; height: 8px; border-radius: 4px; margin: 6px 0; overflow: hidden;
+            background: #2e2e33; height: 8px; border-radius: 4px; margin: 6px 0; overflow: hidden;
         }
-        #hp-bar div { background: #27ae60; height: 100%; transition: width 0.3s; }
+        #hp-bar div { background: #2fbf71; height: 100%; transition: width 0.3s; }
         #xp-bar {
-            background: #333; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
+            background: #2e2e33; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
         }
-        #xp-bar div { background: #a8d8ea; height: 100%; transition: width 0.3s; }
+        #xp-bar div { background: #c9a84c; height: 100%; transition: width 0.3s; }
         #buy-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.8); justify-content: center; align-items: center;
         }
         #buy-box {
-            background: #16213e; padding: 25px; border-radius: 10px;
+            background: #151517; padding: 25px; border-radius: 10px;
             border: 1px solid #c9a84c; text-align: center;
             width: 100%; max-width: 92vw;
         }
         #buy-box h3 { color: #c9a84c; margin-bottom: 15px; }
         #buy-box input {
-            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            background: #1e1e21; color: #d6d6d6; border: 1px solid #2e2e33;
             padding: 8px; font-size: 1.1em; width: 80px; text-align: center;
             border-radius: 4px; font-family: 'Courier New', monospace;
         }
         #buy-box button {
-            background: #c9a84c; color: #1a1a2e; border: none; padding: 8px 20px;
+            background: #c9a84c; color: #0b0b0c; border: none; padding: 8px 20px;
             margin: 5px; font-size: 0.95em; cursor: pointer; border-radius: 4px;
             font-family: 'Courier New', monospace;
         }
@@ -186,8 +186,8 @@
         /* ---------- Combat stage: monster portrait ---------- */
         #combat-stage {
             display: none;
-            background: #16213e;
-            border: 1px solid #333;
+            background: #151517;
+            border: 1px solid #2e2e33;
             border-radius: 8px;
             padding: 14px;
             margin-bottom: 15px;
@@ -229,12 +229,12 @@
         }
         .monster-info { flex: 1; min-width: 0; }
         .monster-name { color: #e74c3c; font-size: 1.05em; letter-spacing: 1px; margin-bottom: 8px; }
-        #ehp-bar { background: #2a2a3d; height: 12px; border-radius: 6px; overflow: hidden; }
+        #ehp-bar { background: #2a2a2a; height: 12px; border-radius: 6px; overflow: hidden; }
         #ehp-fill {
             background: linear-gradient(90deg, #c0392b, #e74c3c);
             height: 100%; transition: width .3s;
         }
-        .monster-hp { color: #a8d8ea; font-size: .8em; margin-top: 6px; }
+        .monster-hp { color: #9a9aa0; font-size: .8em; margin-top: 6px; }
 
         /* ---------- Combat / dungeon focus: hide the map, grow the chat ---------- */
         #log { min-height: 40px; max-height: 170px; }
@@ -308,7 +308,7 @@
 <div id="buy-overlay">
     <div id="buy-box">
         <h3 id="buy-title">Buy</h3>
-        <p id="buy-info" style="margin-bottom:12px;color:#aaa;"></p>
+        <p id="buy-info" style="margin-bottom:12px;color:#8a8a8a;"></p>
         <div><input type="number" id="buy-qty" value="1" min="1"></div>
         <div style="margin-top:12px;">
             <button onclick="buyConfirm()">Buy</button>
@@ -349,7 +349,7 @@ function drawMap(currentId) {
     }
     const locs = mapLocations;
     const current = locs[currentId];
-    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#16213e" rx="4"/>`;
+    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#151517" rx="4"/>`;
     const drawn = new Set();
     for (const [id, loc] of Object.entries(locs)) {
         for (const target of loc.connects_to) {
@@ -357,7 +357,7 @@ function drawMap(currentId) {
             if (drawn.has(key)) continue;
             drawn.add(key);
             const t = locs[target];
-            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#555" stroke-width="2"/>`;
+            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#3a3a40" stroke-width="2"/>`;
         }
     }
     for (const [id, loc] of Object.entries(locs)) {
@@ -366,8 +366,8 @@ function drawMap(currentId) {
         const canReach = isCurrent || isConnected;
         const opacity = canReach ? 1 : 0.35;
         const r = isCurrent ? 12 : 7;
-        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#5dade2";
-        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#2fbf71";
+        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
         if (isCurrent) {
             svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
         }
@@ -378,10 +378,10 @@ function drawMap(currentId) {
         }
         svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}" pointer-events="none"><title>${loc.name}</title></circle>`;
         const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
-        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#5fd39a";
         svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
     }
-    svg += `<text x="12" y="22" fill="#a8d8ea" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
+    svg += `<text x="12" y="22" fill="#9a9aa0" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
     svg += "</svg>";
     container.innerHTML = svg;
 }
@@ -473,7 +473,7 @@ function submitCreate() {
 
 const MONSTER_ART = {
     "Zombie": `<g>
-        <ellipse cx="60" cy="110" rx="32" ry="6" fill="#000" opacity=".35"/>
+        <ellipse cx="60" cy="110" rx="32" ry="6" fill="#33333a" opacity=".35"/>
         <path d="M42 54 h36 v30 a18 18 0 0 1 -36 0 z" fill="#4a7c3f"/>
         <rect x="44" y="20" width="32" height="36" rx="7" fill="#5b9450"/>
         <circle cx="53" cy="35" r="4" fill="#10200e"/><circle cx="67" cy="35" r="4" fill="#10200e"/>
@@ -482,17 +482,17 @@ const MONSTER_ART = {
         <path d="M78 62 L94 52" stroke="#5b9450" stroke-width="9" stroke-linecap="round"/>
     </g>`,
     "Skeleton": `<g>
-        <ellipse cx="60" cy="110" rx="26" ry="5" fill="#000" opacity=".35"/>
+        <ellipse cx="60" cy="110" rx="26" ry="5" fill="#33333a" opacity=".35"/>
         <path d="M60 56 v42" stroke="#e8e6d8" stroke-width="5" stroke-linecap="round"/>
         <path d="M46 66 h28 M46 78 h28 M48 90 h24" stroke="#e8e6d8" stroke-width="4" stroke-linecap="round"/>
         <path d="M60 56 L44 72 M60 56 L76 72" stroke="#e8e6d8" stroke-width="4" stroke-linecap="round"/>
         <rect x="44" y="14" width="32" height="36" rx="10" fill="#f2f0e2"/>
-        <circle cx="53" cy="30" r="5" fill="#1a1a2e"/><circle cx="67" cy="30" r="5" fill="#1a1a2e"/>
-        <path d="M50 42 h20" stroke="#1a1a2e" stroke-width="3"/>
-        <path d="M54 42 v5 M60 42 v5 M66 42 v5" stroke="#1a1a2e" stroke-width="2"/>
+        <circle cx="53" cy="30" r="5" fill="#0b0b0c"/><circle cx="67" cy="30" r="5" fill="#0b0b0c"/>
+        <path d="M50 42 h20" stroke="#0b0b0c" stroke-width="3"/>
+        <path d="M54 42 v5 M60 42 v5 M66 42 v5" stroke="#0b0b0c" stroke-width="2"/>
     </g>`,
     "Spider": `<g>
-        <ellipse cx="60" cy="106" rx="34" ry="6" fill="#000" opacity=".35"/>
+        <ellipse cx="60" cy="106" rx="34" ry="6" fill="#33333a" opacity=".35"/>
         <path d="M60 74 C34 78 22 62 18 44 M60 74 C86 78 98 62 102 44
                  M60 80 C36 88 26 82 14 70 M60 80 C84 88 94 82 106 70
                  M60 72 C40 66 34 52 34 38 M60 72 C80 66 86 52 86 38"
@@ -503,7 +503,7 @@ const MONSTER_ART = {
         <path d="M50 62 L58 66 M70 62 L62 66" stroke="#c0392b" stroke-width="3" stroke-linecap="round"/>
     </g>`,
     "Wolf": `<g>
-        <ellipse cx="60" cy="106" rx="32" ry="6" fill="#000" opacity=".35"/>
+        <ellipse cx="60" cy="106" rx="32" ry="6" fill="#33333a" opacity=".35"/>
         <path d="M60 60 C38 60 34 36 44 24 L52 40 L60 32 L68 40 L76 24 C86 36 82 60 60 60 z" fill="#8a8f99"/>
         <path d="M44 24 L48 38 L52 30 z M76 24 L72 38 L68 30 z" fill="#5c5f68"/>
         <ellipse cx="60" cy="66" rx="13" ry="10" fill="#6b707a"/>
@@ -512,30 +512,30 @@ const MONSTER_ART = {
         <path d="M60 46 v8" stroke="#3a3a42" stroke-width="2"/>
     </g>`,
     "Goblin": `<g>
-        <ellipse cx="60" cy="106" rx="26" ry="5" fill="#000" opacity=".35"/>
+        <ellipse cx="60" cy="106" rx="26" ry="5" fill="#33333a" opacity=".35"/>
         <path d="M46 46 L18 26 L40 32 z M74 46 L102 26 L80 32 z" fill="#7cb342"/>
         <ellipse cx="60" cy="56" rx="26" ry="24" fill="#8bc34a"/>
         <circle cx="51" cy="52" r="5" fill="#f5f5f5"/><circle cx="69" cy="52" r="5" fill="#f5f5f5"/>
-        <circle cx="51" cy="52" r="2.5" fill="#1a1a2e"/><circle cx="69" cy="52" r="2.5" fill="#1a1a2e"/>
+        <circle cx="51" cy="52" r="2.5" fill="#0b0b0c"/><circle cx="69" cy="52" r="2.5" fill="#0b0b0c"/>
         <path d="M60 60 l-7 8 h14 z" fill="#33691e"/>
         <path d="M48 70 h24" stroke="#33691e" stroke-width="3" stroke-linecap="round"/>
         <path d="M50 82 h20 v18 h-20 z" fill="#7cb342"/>
     </g>`,
     "Slime": `<g>
-        <ellipse cx="60" cy="100" rx="38" ry="8" fill="#000" opacity=".3"/>
+        <ellipse cx="60" cy="100" rx="38" ry="8" fill="#33333a" opacity=".3"/>
         <path d="M60 22 C86 22 96 62 96 78 C96 94 80 102 60 102 C40 102 24 94 24 78 C24 62 34 22 60 22 z" fill="#1abc9c" opacity=".85"/>
         <ellipse cx="46" cy="52" rx="9" ry="12" fill="#ffffff" opacity=".45"/>
         <circle cx="50" cy="72" r="6" fill="#0b3d34"/><circle cx="70" cy="72" r="6" fill="#0b3d34"/>
         <path d="M50 88 q10 8 20 0" stroke="#0b3d34" stroke-width="3" fill="none" stroke-linecap="round"/>
     </g>`,
     "Ghost": `<g>
-        <ellipse cx="60" cy="108" rx="26" ry="5" fill="#000" opacity=".25"/>
+        <ellipse cx="60" cy="108" rx="26" ry="5" fill="#33333a" opacity=".25"/>
         <path d="M60 18 C86 18 96 44 96 66 L96 96 L84 88 L72 98 L60 88 L48 98 L36 88 L24 96 L24 66 C24 44 34 18 60 18 z" fill="#dfe9f5" opacity=".92"/>
         <circle cx="50" cy="56" r="6" fill="#1a2a44"/><circle cx="70" cy="56" r="6" fill="#1a2a44"/>
         <ellipse cx="60" cy="76" rx="9" ry="12" fill="#1a2a44" opacity=".7"/>
     </g>`,
     "Demon Lord": `<g>
-        <ellipse cx="60" cy="110" rx="40" ry="7" fill="#000" opacity=".4"/>
+        <ellipse cx="60" cy="110" rx="40" ry="7" fill="#33333a" opacity=".4"/>
         <path d="M34 40 C20 18 34 8 44 20 L52 34 z M86 40 C100 18 86 8 76 20 L68 34 z" fill="#7b241c"/>
         <path d="M40 66 C40 40 80 40 80 66 C80 86 68 96 60 96 C52 96 40 86 40 66 z" fill="#c0392b"/>
         <path d="M46 60 l10 -4 l-10 8 z M74 60 l-10 -4 l10 8 z" fill="#f1c40f"/>
@@ -543,17 +543,17 @@ const MONSTER_ART = {
         <path d="M40 70 L18 84 M80 70 L102 84" stroke="#c0392b" stroke-width="8" stroke-linecap="round"/>
     </g>`,
     "Elder Dragon": `<g>
-        <ellipse cx="60" cy="108" rx="42" ry="7" fill="#000" opacity=".4"/>
+        <ellipse cx="60" cy="108" rx="42" ry="7" fill="#33333a" opacity=".4"/>
         <path d="M30 44 C14 26 22 8 36 18 L48 34 z M90 44 C106 26 98 8 84 18 L72 34 z" fill="#7d6608"/>
         <path d="M34 62 C34 38 86 38 86 62 C86 82 74 94 60 94 C46 94 34 82 34 62 z" fill="#7f8c29"/>
         <circle cx="50" cy="58" r="6" fill="#f1c40f"/><circle cx="70" cy="58" r="6" fill="#f1c40f"/>
-        <circle cx="50" cy="58" r="2" fill="#1a1a2e"/><circle cx="70" cy="58" r="2" fill="#1a1a2e"/>
+        <circle cx="50" cy="58" r="2" fill="#0b0b0c"/><circle cx="70" cy="58" r="2" fill="#0b0b0c"/>
         <path d="M40 76 h40 l-6 10 h-28 z" fill="#f5f5dc" opacity=".9"/>
         <path d="M46 76 l4 10 l4 -10 z M58 76 l4 10 l4 -10 z M70 76 l4 10 l4 -10 z" fill="#fff"/>
         <path d="M34 66 L14 78 M86 66 L106 78" stroke="#7f8c29" stroke-width="8" stroke-linecap="round"/>
     </g>`,
     "_default": `<g>
-        <ellipse cx="60" cy="106" rx="30" ry="6" fill="#000" opacity=".35"/>
+        <ellipse cx="60" cy="106" rx="30" ry="6" fill="#33333a" opacity=".35"/>
         <circle cx="60" cy="60" r="34" fill="#8e44ad"/>
         <circle cx="50" cy="54" r="5" fill="#fff"/><circle cx="70" cy="54" r="5" fill="#fff"/>
     </g>`

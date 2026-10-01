@@ -17,6 +17,10 @@ TEMPLATES = {
     "Elder Dragon": {"hp": 75, "ac": 18, "dice": "d12", "bonus": 6, "xp": 250, "gold": 80},
 }
 
+# Rewards are multiplied by these before being rounded to whole numbers.
+XP_REWARD_MULTIPLIER = 1.4    # +40% XP
+GOLD_REWARD_MULTIPLIER = 1.6  # +60% gold
+
 class Enemy:
     def __init__(self, name, level):
         self.name = name
@@ -29,7 +33,9 @@ class Enemy:
         num_dice = (level - 1) // 4 + 1
         self.damage_dice = f"{num_dice}{t['dice']}"
         self.damage_bonus = t["bonus"] + (level - 1) // 2
-        self.xp_reward = t["xp"] * (level/2 )
+        # int() keeps the reward a whole number - without it floating point
+        # would show things like "35.000000000000004 XP" in the log.
+        self.xp_reward = int(t["xp"] * (level / 2) * XP_REWARD_MULTIPLIER)
 
     #===========================
     # Enemy Actions
@@ -38,7 +44,7 @@ class Enemy:
         return f"Lv.{self.level} {self.name}  HP: {self.hp}/{self.max_hp}  AC: {self.ac}"
 
     def gold_drop(self):
-        return TEMPLATES[self.name]["gold"] * self.level
+        return int(TEMPLATES[self.name]["gold"] * self.level * GOLD_REWARD_MULTIPLIER)
 
     def attack_damage(self):
         return roll(self.damage_dice) + self.damage_bonus
