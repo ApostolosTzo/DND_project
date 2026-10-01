@@ -9,6 +9,9 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 - **Character creation** — choose race (Human/Elf/Dwarf/Halfling) and class (Fighter/Rogue/Wizard/Cleric), stats rolled via 4d6-drop-lowest
 - **Forgiving start** — every class gets +5 base HP and a full pack of 15 Healing Potions
 - **Loot** — kills pay 40% more XP and 60% more gold
+- **Selling** — sell any item to any NPC for 20% under the shop price; the game warns you before you sell your last weapon or armour
+- **Repeatable quests** — three randomly-named quest givers in Town trade gold and XP for monster materials
+- **Monster drops** — 7 materials dropped by the creatures that carry them (used for quests)
 - **Turn-based combat** — attack, use items, or flee against level-scaled enemies (no fleeing in dungeon)
 - **Running combat log** — every exchange stays in the chat, so you can read back through a whole fight
 - **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
@@ -20,7 +23,7 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 - **NPC shops** — 5 NPCs: Potion Merchant, Weaponsmith, Armorer, Archer, Wizard; availability varies by location. Tap an item to expand an inline panel showing what it gives you (damage, properties, stat bonuses, AC change) with a one-tap **Buy** button
 - **Interactive world map** — an illustrated map with forests, mountains, a river and curved roads; clickable nodes to travel between Town, Village 1, Village 2, and Dungeon. It gets out of the way while you fight
 - **Mobile-friendly UI** — single-column layout, big tap targets and safe-area padding on phones
-- **42 items** — weapons, armors, shields, potions, scrolls, magical items
+- **109 items** — 48 weapons, 49 armors/shields, potions, scrolls, magical items and quest materials
 - **10-floor dungeon** — progressive enemy scaling, potion merchant on floor 5, boss fight on floor 10
 - **Boss encounters** — Demon Lord and Elder Dragon only appear on dungeon floor 10
 - **Multi-save system** — save/load with overwrite confirmation; JSON files in the Flask build, `localStorage` in the PWA
@@ -160,6 +163,62 @@ Kills pay out **40% more XP and 60% more gold** than the original tuning (the mu
 
 `XP = base XP × level ÷ 2 × 1.4`, `gold = base gold × level × 1.6`, both rounded to whole numbers. Clearing the dungeon still adds a flat **+500 gold / +500 XP** boss bonus on floor 10.
 
+### Selling items
+
+Every NPC buys items at **20% under the cheapest price that item sells for** (`SELL_RATIO = 0.8` in `shop.py` / `js/shop.js` — change it in one place to retune).
+
+- Open any shop and switch to the **Sell** tab; equipped gear is listed too, marked *(equipped)*
+- The price shown is what you will actually receive
+- **Quest materials cannot be sold** — they are only worth turning in
+- Selling your **last weapon** or **last piece of armour** pops a warning with **Continue / Cancel**, because you will be left with nothing equipped
+- Selling equipped gear recomputes your AC and max HP immediately
+
+### Monster drops
+
+Kills drop quest materials (75% chance, 1–3 pieces). `DROPS` in `enemy.py` / `js/enemy.js`:
+
+| Monster | Drops |
+|---|---|
+| Goblin | Metal Fragments |
+| Spider | Web String |
+| Slime | Slime Ball |
+| Zombie | Rotten Flesh |
+| Skeleton | Bone |
+| Wolf | Fur |
+| Ghost | Plasma |
+| Demon Lord / Elder Dragon | *nothing yet* — ideas below |
+
+### Quests (Town only)
+
+Three quest givers stand in Town, with **randomly generated names** each new run (e.g. *Nell the Wandering Scribe*). Every quest is **repeatable**: accept it once, then hand in as many batches as you like.
+
+| Quest giver | Wants | Pays |
+|---|---|---|
+| Alchemist | Plasma ×8 | 260g, 140 XP |
+| Alchemist | Slime Ball ×8 | 220g, 120 XP |
+| Bone Collector | Bone ×10 | 300g, 160 XP |
+| Bone Collector | Rotten Flesh ×8 | 200g, 110 XP |
+| Trapper | Fur ×10 | 280g, 150 XP |
+| Trapper | Web String ×8 | 210g, 115 XP |
+| Trapper | Metal Fragments ×10 | 320g, 170 XP |
+
+Flow: **Town → Quests → pick an NPC → [Accept]** → kill the right monsters → **return to the same NPC** → `[Turn in]`. Quest XP can level you up; if it does, you finish allocating points back at the NPC rather than being dropped in Town.
+
+### Boss drop ideas (not implemented)
+
+For when you decide what the bosses should drop:
+
+| Boss | Idea | Why it fits |
+|---|---|---|
+| Demon Lord | **Demon Heart** — +3 CON, one-shot quest item | A trophy-tier quest material nobody else can farm |
+| Demon Lord | **Obsidian Shard** — craft-only (for later) | Fits your "no crafting yet" rule; pure loot |
+| Demon Lord | **Hellfire Core** — weapon that adds fire damage | Consumable-looking, feeds a magic-weapon line |
+| Elder Dragon | **Dragon Scale** — already an armour in the catalogue | Reuse existing item instead of adding one |
+| Elder Dragon | **Ancient Coin Hoard** — 1000–1500g | Straight gold sink-reward for the hardest fight |
+| Elder Dragon | **Breath of the Wyrm** — single-use fireball scroll | Turns the boss into the source of a powerful consumable |
+
+The hook already exists: add the item to `ITEMS`, map it in `DROPS`, and (if it is a quest material) add a quest. No new code needed.
+
 ### Equipment stat bonuses
 
 | Item | Bonus |
@@ -208,17 +267,19 @@ DND_project/
 ├── .nojekyll            # Tells GitHub Pages not to run Jekyll
 ├── js/                  # Game logic ported from Python, runs in the browser
 │   ├── dice.js          # Dice roller (NdX+Y)
-│   ├── items.js         # Weapons, armor, shields, potions
-│   ├── enemy.js         # Enemy templates, bosses, scaling
+│   ├── items.js         # Weapons, armor, shields, potions, quest materials
+│   ├── enemy.js         # Enemy templates, bosses, scaling, drops
 │   ├── player.js        # Character creation, stats, leveling
-│   ├── shop.js          # NPC shop definitions
+│   ├── quests.js        # Quest givers and quest definitions
+│   ├── shop.js          # NPC shop definitions + sell prices
 │   ├── world_map.js     # Locations and connections
 │   ├── saves.js         # Save/load (localStorage instead of JSON files)
 │   └── game.js          # Game state machine (port of game_server.py)
 ├── icons/               # PWA icons (placeholder art)
 ├── game_server.py       # Flask web server (all game logic)
 ├── run_server.py        # Alternative launcher: py run_server.py
-├── enemy.py             # Enemy templates, bosses, scaling
+├── quests.py            # Repeatable quest givers (Town only)
+├── enemy.py             # Enemy templates, bosses, scaling, drops
 ├── player.py            # Character creation, stats, leveling
 ├── items.py             # Weapons, armor, shields, potions
 ├── shop.py              # NPC shop definitions
@@ -244,6 +305,7 @@ This repo holds **two implementations of one game**, so a few rules keep them ho
 |---|---|
 | Change game rules in **both** `*.py` and `js/*.js` | The Flask build and the PWA build ship side by side; a one-sided change makes them disagree |
 | New items: define in `items.py` **and** `js/items.js`, sell in `shop.py` **and** `js/shop.js` | If a shop lists an item the catalogue doesn't define, `create_item()` returns `None`, `None` lands in the inventory and the inventory/shop screen throws. A guard turns this into a harmless *"That item is not available."*, but the right fix is to add it to all four files |
+| Quests live in `quests.py` **and** `js/quests.js`; drops in `DROPS` in `enemy.py` **and** `js/enemy.js` | Same duplication — both files must agree or the two builds diverge |
 | The world map lives in `world_map.py` **and** `js/world_map.js` | Both builds read location coordinates and connections from them |
 | Bump `CACHE_VERSION` in `sw.js` when `js/*.js` changes | Those files are cached cache-first; without a bump, returning players keep the old code |
 | `templates/index.html` and the root `index.html` both contain the map renderer | The renderer is self-contained (its CSS sits in an SVG `<style>` block) so the block can be copied between them verbatim — keep them in step |

@@ -112,6 +112,22 @@
         }
         .shop-row { display: flex; flex-direction: column; }
         .shop-item { width: 100%; }
+        .shop-item:disabled { color: #6a6a70; cursor: not-allowed; }
+        .shop-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+        .shop-tab {
+            flex: 1; background: #1e1e21; color: #8a8a8a; border: 1px solid #2e2e33;
+            padding: 9px; font-family: 'Courier New', monospace; font-size: 0.95em;
+            cursor: pointer; border-radius: 4px; transition: 0.2s; touch-action: manipulation;
+        }
+        .shop-tab.active { background: #c9a84c; color: #0b0b0c; border-color: #c9a84c; }
+        .shop-sell {
+            margin: 4px 0 4px 4px; align-self: flex-start;
+            background: #1e1e21; color: #2fbf71; border: 1px solid #2fbf71;
+            padding: 9px 18px; min-height: 40px; font-family: 'Courier New', monospace;
+            font-size: 0.9em; cursor: pointer; border-radius: 4px; transition: 0.2s;
+            touch-action: manipulation;
+        }
+        .shop-sell:hover { background: #2fbf71; color: #0b0b0c; }
         .shop-detail {
             background: #151517;
             border: 1px solid #2e2e33;
@@ -357,6 +373,7 @@
 <script src="js/items.js"></script>
 <script src="js/enemy.js"></script>
 <script src="js/player.js"></script>
+<script src="js/quests.js"></script>
 <script src="js/shop.js"></script>
 <script src="js/world_map.js"></script>
 <script src="js/saves.js"></script>
@@ -494,28 +511,39 @@ function drawMap(currentId) {
         const stroke = STROKE[loc.type] || "#8a8a8a";
         const labelY = loc.y < 200 ? loc.y - 20 : loc.y + 26;
         const pillW = loc.name.length * 6.7 + 14;
+        const clickable = canReach && !isCurrent;
 
+        // One group per node, and only the group carries the click. Previously
+        // the visible circle sat on top of the invisible hit area and swallowed
+        // the click, so tapping the middle of a marker did nothing while the ring
+        // around it worked.
+        const attrs = clickable
+            ? ` class="mn" style="cursor:pointer" onclick="travel('${id}')"`
+            : ` class="mn"`;
+
+        svg += "<g" + attrs + " opacity=\"" + op + '" title="' + (clickable ? "Travel to " : "") + loc.name + '">';
+
+        if (clickable) {
+            // generous invisible hit area, easy to tap on a phone
+            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 13) + '" fill="transparent"/>';
+        }
         if (isCurrent) {
-            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="18" fill="none" stroke="' + fill + '" stroke-width="2" opacity="0.45">' +
-                '<animate attributeName="r" values="12;20;12" dur="2.4s" repeatCount="indefinite"/>' +
-                '<animate attributeName="opacity" values="0.45;0.05;0.45" dur="2.4s" repeatCount="indefinite"/></circle>';
+            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 4) + '" fill="' + fill + '" opacity="0.18"/>';
         }
-
-        // generous invisible hit area, easy to tap on a phone
-        if (canReach && !isCurrent) {
-            svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 12) + '" fill="transparent" style="cursor:pointer" ' +
-                'onclick="travel(\'' + id + '\')"><title>Travel to ' + loc.name + "</title></circle>";
-        }
-
-        svg += '<g class="mn" opacity="' + op + '">';
-        if (isCurrent) svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + (r + 4) + '" fill="' + fill + '" opacity="0.18"/>';
         svg += '<circle cx="' + loc.x + '" cy="' + loc.y + '" r="' + r + '" fill="' + fill + '" stroke="' + stroke +
             '" stroke-width="2"' + (isCurrent ? ' filter="url(#glow)"' : "") + "/>";
         svg += '<g transform="translate(' + loc.x + ',' + (loc.y + 0.5) + ') scale(0.62)">' + nodeGlyph(loc.type) + "</g>";
         svg += '<rect x="' + (loc.x - pillW / 2) + '" y="' + (labelY - 11) + '" width="' + pillW + '" height="16" rx="8" fill="#0b0b0c" opacity="0.82"/>';
-        svg += '<text class="mlabel" x="' + loc.x + '" y="' + labelY + '" text-anchor="middle" fill="' + stroke + '" opacity="' + op + '">' + loc.name + "</text>";
+        svg += '<text class="mlabel" x="' + loc.x + '" y="' + labelY + '" text-anchor="middle" fill="' + stroke + '">' + loc.name + "</text>";
         svg += "</g>";
     }
+
+    // pulsing ring for the current location, drawn under the labels
+    const cur = current;
+    svg += '<circle cx="' + cur.x + '" cy="' + cur.y + '" r="18" fill="none" stroke="' + (FILL[cur.type] || "#c9a84c") +
+        '" stroke-width="2" opacity="0.45" pointer-events="none">' +
+        '<animate attributeName="r" values="12;21;12" dur="2.4s" repeatCount="indefinite"/>' +
+        '<animate attributeName="opacity" values="0.45;0.05;0.45" dur="2.4s" repeatCount="indefinite"/></circle>';
 
     svg += '<rect width="520" height="360" fill="url(#vig)" pointer-events="none" rx="6"/>';
 
@@ -823,6 +851,8 @@ document.addEventListener("keydown", function (ev) {
 // -----------------------------
 
 let openShopItem = null;
+let shopMode = "buy";          // "buy" | "sell"
+let pendingSell = null;        // {item, price, kind} waiting on a confirm
 
 function itemStatRows(name) {
     const it = ITEMS[name];
@@ -911,6 +941,173 @@ function shopDetailHtml(name, price, player) {
         "</div>";
 }
 
+// -----------------------------
+// Shop list: buying, selling, and the last-weapon warning
+// -----------------------------
+
+function groupInventoryForSell(p) {
+    // Storage only - equipped gear is listed too, but separately flagged.
+    const grouped = {};
+    p.inventory.forEach((item) => {
+        (grouped[item.name] = grouped[item.name] || []).push(item);
+    });
+    return grouped;
+}
+
+// Would selling this leave the player with nothing of its kind?
+function isLastOfItsKind(p, item) {
+    const slot = item.category === "weapon" ? "weapon"
+        : (item.armor_type === "shield" ? "shield" : "armor");
+    const equipped = p[slot] && p[slot].name === item.name;
+    const owned = (p.inventory.filter((i) => i.name === item.name).length) + (equipped ? 1 : 0);
+    return owned <= 1 && (item.category === "weapon" || item.category === "armor");
+}
+
+function sellWarningText(kind) {
+    return kind === "weapon"
+        ? "That is your last weapon - you will have nothing equipped!"
+        : "That is your last piece of armour - you will have nothing equipped!";
+}
+
+function renderShopSell(s, opts) {
+    // s.player is the JSON view sent to the UI (no inventory); the live Player
+    // object lives in gs.player and is what we need for gear and storage.
+    const p = gs.player;
+    const gold = (s.player && s.player.gold) || (p && p.gold) || 0;
+    if (!p) return;
+    const grouped = groupInventoryForSell(p);
+    const equipped = [];
+    ["weapon", "armor", "shield"].forEach((slot) => {
+        const it = p[slot];
+        if (it && !grouped[it.name]) equipped.push(it);
+    });
+
+    const head = document.createElement("div");
+    head.className = "shop-gold";
+    head.textContent = "You have " + gold + "g — NPCs pay 20% under the shop price";
+    opts.appendChild(head);
+
+    const addRow = (label, price, kind, isEquipped) => {
+        if (price === null || price === undefined) {
+            const row = document.createElement("div");
+            row.className = "shop-row";
+            const b = document.createElement("button");
+            b.setAttribute("data-opt", opts.querySelectorAll("[data-opt]").length);
+            b.className = "shop-item";
+            b.textContent = "> " + label + " — cannot be sold";
+            b.disabled = true;
+            row.appendChild(b);
+            opts.appendChild(row);
+            return;
+        }
+        const row = document.createElement("div");
+        row.className = "shop-row";
+
+        const btn = document.createElement("button");
+        btn.className = "shop-item";
+        btn.setAttribute("data-opt", opts.querySelectorAll("[data-opt]").length);
+        btn.textContent = "> " + label + (isEquipped ? " (equipped)" : "");
+        btn.addEventListener("click", () => {
+            if (isLastOfItsKind(p, { category: kind === "weapon" ? "weapon" : "armor",
+                                     armor_type: kind === "shield" ? "shield" : "armor",
+                                     name: label })) {
+                pendingSell = { item: label, price: price, kind: kind };
+                renderOptions(currentState);
+            } else {
+                doSell(label);
+            }
+        });
+        row.appendChild(btn);
+
+        if (pendingSell && pendingSell.item === label) {
+            const warn = document.createElement("div");
+            warn.className = "shop-detail";
+            warn.innerHTML = '<div class="shop-detail-info">' +
+                '<div class="shop-detail-name" style="color:#e74c3c">' +
+                    sellWarningText(kind) + "</div>" +
+                '<p class="flavour">Selling it leaves that slot empty.</p></div>';
+
+            const cont = document.createElement("button");
+            cont.className = "shop-buy";
+            cont.textContent = "Continue";
+            cont.style.background = "#c0392b";
+            cont.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                const target = pendingSell;
+                pendingSell = null;
+                doSell(target.item);
+            });
+            const cancel = document.createElement("button");
+            cancel.className = "shop-buy";
+            cancel.textContent = "Cancel";
+            cancel.style.background = "#2e2e33";
+            cancel.style.color = "#d6d6d6";
+            cancel.addEventListener("click", (ev) => {
+                ev.stopPropagation();
+                pendingSell = null;
+                renderOptions(currentState);
+            });
+            warn.appendChild(cancel);
+            warn.appendChild(cont);
+            row.appendChild(warn);
+        }
+
+        const sellBtn = document.createElement("button");
+        sellBtn.className = "shop-sell";
+        sellBtn.textContent = "Sell · " + price + "g";
+        sellBtn.addEventListener("click", (ev) => { ev.stopPropagation(); doSell(label); });
+        row.appendChild(sellBtn);
+        opts.appendChild(row);
+    };
+
+    equipped.forEach((it) => {
+        const kind = it.category === "weapon" ? "weapon"
+            : (it.armor_type === "shield" ? "shield" : "armor");
+        addRow(it.name, sellPrice(it.name), kind, true);
+    });
+    Object.keys(grouped).forEach((name) => {
+        const list = grouped[name];
+        const it = list[0];
+        const kind = it.category === "weapon" ? "weapon"
+            : (it.category === "item" ? "item" : (it.armor_type === "shield" ? "shield" : "armor"));
+        const label = list.length > 1 ? name + " x" + list.length : name;
+        if (kind === "item") {
+            // Quest materials and anything else unsellable; potions are fine.
+            const row = document.createElement("div");
+            row.className = "shop-row";
+            const b = document.createElement("button");
+            b.setAttribute("data-opt", opts.querySelectorAll("[data-opt]").length);
+            b.className = "shop-item";
+            const price = sellPrice(name);
+            b.textContent = "> " + label + (price === null ? " — cannot be sold" : "");
+            b.disabled = price === null;
+            row.appendChild(b);
+            if (price !== null) {
+                b.addEventListener("click", () => { pendingSell = null; doSell(name); });
+                const sellBtn = document.createElement("button");
+                sellBtn.className = "shop-sell";
+                sellBtn.textContent = "Sell · " + price + "g";
+                sellBtn.addEventListener("click", (ev) => { ev.stopPropagation(); doSell(name); });
+                row.appendChild(sellBtn);
+            }
+            opts.appendChild(row);
+        } else {
+            addRow(label, sellPrice(name), kind, false);
+        }
+    });
+
+    const back = document.createElement("button");
+    back.setAttribute("data-opt", opts.querySelectorAll("[data-opt]").length);
+    back.textContent = "> (Back)";
+    back.addEventListener("click", () => { pendingSell = null; doAction(0); });
+    opts.appendChild(back);
+}
+
+function doSell(name) {
+    render(Game.sellItem(name));
+}
+
+// Everything on a screen, including the shop. index.html owns navigation;
 function renderOptions(s) {
     const opts = document.getElementById("options");
     opts.innerHTML = "";
@@ -920,6 +1117,26 @@ function renderOptions(s) {
     // The shop draws its own rows so a panel can open under an item.
     if (s.screen === "shop" && s.shop_items) {
         const gold = s.player ? s.player.gold : 0;
+
+        const tabs = document.createElement("div");
+        tabs.className = "shop-tabs";
+        const buyTab = document.createElement("button");
+        buyTab.className = "shop-tab" + (shopMode === "buy" ? " active" : "");
+        buyTab.textContent = "Buy";
+        buyTab.addEventListener("click", () => { shopMode = "buy"; pendingSell = null; renderOptions(currentState); });
+        const sellTab = document.createElement("button");
+        sellTab.className = "shop-tab" + (shopMode === "sell" ? " active" : "");
+        sellTab.textContent = "Sell";
+        sellTab.addEventListener("click", () => { shopMode = "sell"; pendingSell = null; renderOptions(currentState); });
+        tabs.appendChild(buyTab);
+        tabs.appendChild(sellTab);
+        opts.appendChild(tabs);
+
+        if (shopMode === "sell") {
+            renderShopSell(s, opts);
+            return;
+        }
+
         const head = document.createElement("div");
         head.className = "shop-gold";
         head.textContent = "You have " + gold + "g — tap an item to see what it gives you";
@@ -1102,6 +1319,9 @@ function handleClick(screen, index) {
         doAction(index);
     }
     else if (screen === "dungeon") {
+        doAction(index);
+    }
+    else if (screen === "quest_hub" || screen === "quest_npc") {
         doAction(index);
     }
 }

@@ -976,6 +976,116 @@ The remaining risk is a bad CON roll: `CON 3` gives a −4 modifier, so a fresh 
 
 If you want it even safer, the cheapest options are a **minimum starting HP floor** (e.g. never below 12), or **healing to full after every overworld fight**. Neither is implemented — flagged as data, not changed.
 
+## Quests, Selling, Drops & 60 New Items
+
+### 1. Selling at any NPC
+
+Every NPC now buys items at **20% under the cheapest price that item sells for**:
+
+```python
+SELL_RATIO = 0.8
+def sell_price(item_name):
+    item = create_item(item_name)
+    if item is None or is_material(item):
+        return None                      # quest materials are not for sale
+    prices = [shop["items"][item_name]["price"]
+              for shop in SHOP_NPCS.values() if item_name in shop["items"]]
+    return int(min(prices) * SELL_RATIO) if prices else None
+```
+
+- New `/sell` endpoint (Flask) and `Game.sellItem()` (PWA); the shop screen gained a **Buy / Sell** tab
+- Equipped gear is listed too, marked *(equipped)*, and selling it recomputes AC and max HP immediately
+- **Quest materials return `None`** — they can only be turned in
+- Nothing is removed from the catalogue, so `sellPrice()` is derived rather than stored
+
+### 2. The "last weapon" warning
+
+Selling the only weapon or the only armour you own is a trap, so it asks first:
+
+```
+That is your last weapon - you will have nothing equipped!
+Selling it leaves that slot empty.        [Cancel]  [Continue]
+```
+
+`isLastOfItsKind()` counts the item in storage **plus** the equipped slot, and only warns for weapons and armour (selling your last potion should not nag). Cancel leaves everything untouched; Continue performs the sale. This also forced a real fix: `sellItem()` originally only searched the inventory, so **you could not sell your equipped gear at all** — exactly the case the warning exists for.
+
+### 3. Monster drops → quest materials
+
+| Monster | Drops |
+|---|---|
+| Goblin | Metal Fragments |
+| Spider | Web String |
+| Slime | Slime Ball |
+| Zombie | Rotten Flesh |
+| Skeleton | Bone |
+| Wolf | Fur |
+| Ghost | Plasma |
+
+`DROPS` maps monster → material; `Enemy.roll_drop()` returns `(material, count)` or `None` (75% chance, 1–3 pieces). Bosses deliberately drop nothing yet. Drops are added in `combat_reward()` and written to the log: `Collected 2 × Bone!`
+
+Quest materials are marked with `effect="material"`, exposed as `MATERIALS` / `is_material()`, which is what makes them unsellable.
+
+### 4. Three repeatable quest givers (Town only)
+
+New `quests.py` / `js/quests.js`. NPC **names are rolled fresh on every new run** from a first-name + epithet pool, so campaigns do not all feature the same quest givers.
+
+| NPC role | Quests |
+|---|---|
+| Alchemist | Plasma ×8 (260g/140xp) · Slime Ball ×8 (220g/120xp) |
+| Bone Collector | Bone ×10 (300g/160xp) · Rotten Flesh ×8 (200g/110xp) |
+| Trapper | Fur ×10 (280g/150xp) · Web String ×8 (210g/115xp) · Metal Fragments ×10 (320g/170xp) |
+
+Flow: `Town → Quests (new 5th option) → NPC → [Accept] → farm → return → [Turn in]`. Completing keeps the quest accepted, so it can be handed in again indefinitely.
+
+**Bug fixed while testing:** a quest that levelled you up dropped you back in Town (`after_combat()`) instead of the NPC you were standing at. `gs["return_to"]` now records where to come back to, and `after_combat()` honours it.
+
+### 5. 30 new weapons and 30 new armours
+
+The catalogue went from 42 to **109 items** (48 weapons, 49 armours/shields, 12 items). Both catalogues were generated from one source of truth and then compared **field by field**:
+
+```
+JS : {"weapon":48,"armor":49,"item":12} total 109 | materials 7
+PY : {"weapon":48,"armor":49,"item":12} total 109 | materials 7
+compared 109 items: 0 field diffs, 0 stock diffs
+CATALOGUES IN SYNC
+```
+
+That check immediately caught **two real bugs in my own generator** and **one pre-existing drift**:
+
+1. **`Armor(name, ac, type, dex_limit, properties, stats_bonus)` is positional.** Writing `Armor("Steel Plate", 17, "heavy", {"CON": 1})` puts the stat bonus in the **`dex_limit`** slot, and `Armor("Shadowcloth", 12, "light", ["magic"])` puts the property list there instead. About 17 armours had a broken DEX limit and empty `properties` in **both** languages. Both writers now emit explicit `None`/`null` placeholders.
+2. Empty property lists were emitted as `[]`, which is truthy in JS and again shifted the arguments.
+3. The 5 shields added by hand to `items.py` (Iron/Tower/Magic/Dragon/Aegis) were **missing from `js/items.js`** — the drift reported earlier. They are now mirrored and verified.
+
+New items are level-gated and stocked in the Weaponsmith (18), Archer (7), Wizard (5) and Armorer (30). No crafting recipes were added, per request.
+
+### 6. Map clicks fixed
+
+Hovering/clicking a marker did the wrong thing: the **visible** circle was painted on top of the invisible hit area and had no `onclick`, so clicking the middle of a node did nothing while the ring around it worked.
+
+Each node is now **one `<g>` that carries the click**, containing the big transparent hit area, the marker, the glyph and the label pill:
+
+```js
+const attrs = clickable ? ` class="mn" style="cursor:pointer" onclick="travel('${id}')"` : ` class="mn"`;
+```
+
+Clicks on any part of the node — centre, glyph or label — bubble to the group and travel. The pulsing current-location ring was also moved out of the node loop and given `pointer-events="none"` so it can never intercept a click. Verified in the browser: clicking the r=9 visible circle now travels correctly.
+
+### Files changed
+- `items.py`, `js/items.js` — +30 weapons, +30 armours, 7 materials, `MATERIALS`/`is_material()`, 5 shields mirrored
+- `shop.py`, `js/shop.js` — new stock, `SELL_RATIO` + `sell_price()`/`sellPrice()`
+- `enemy.py`, `js/enemy.js` — `DROPS`, `roll_drop()`
+- `quests.py`, `js/quests.js` (new) — quest givers, quests, random names
+- `game_server.py`, `js/game.js` — `/sell`, quest screens/handlers, drop collection, `return_to`
+- `index.html`, `templates/index.html` — Buy/Sell tabs, last-weapon warning, quest routing, map node groups
+- `sw.js` — `CACHE_VERSION` → `dnd-pwa-v5`, `js/quests.js` added to the precache
+- `README.md` — selling, drops, quests, boss-drop ideas, new item counts
+
+### Verification
+- Node suite: 109-item catalogue, drop table, sell prices, equipped-gear sale, quest accept → collect → hand in → repeat, plus everything from before
+- Catalogue parity: every field of every item compared between Python and JS
+- Flask HTTP suite: quest hub → accept → hand in, `/sell` (including equipped weapon, AC drop 16 → 13), unsellable materials, and a live fight loop that collected 7 materials in 15 kills (matches the 75% rate)
+- Browser: sell tab lists equipped gear with prices, warning + Continue sells and unequips, Cancel changes nothing, map clicks travel
+
 ## To Do
 - **Export / import saves** as a file (see "Saves: where they live" above) so characters can be backed up and moved between devices
 - Quest system (quest lines with objectives and rewards)

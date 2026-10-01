@@ -11,10 +11,16 @@ const gs = {
     pending_save_name: null,
     current_location: null,
     dungeon_floor: 0,
-    shop_name: null
+    shop_name: null,
+    shop_mode: "buy",
+    quest_npcs: [],
+    quest_accepted: {},
+    quest_done: {},
+    quest_npc_index: 0,
+    return_to: null
 };
 
-const TOWN_OPTIONS = ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"];
+const TOWN_OPTIONS = ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"];
 // No "Quit" on the main menu: it never did anything, and everything else in
 // the game is reachable from the town screen's Quit option.
 const MENU_OPTIONS = ["New Game", "Load Game"];
@@ -113,6 +119,13 @@ function resetRun() {
     gs.dungeon_floor = 0;
     gs.pending_save_name = null;
     gs.shop_name = null;
+    gs.shop_mode = "buy";
+    // Fresh quest givers and a clean quest log for every new run.
+    gs.quest_npcs = rollQuestNpcs();
+    gs.quest_accepted = {};
+    gs.quest_done = {};
+    gs.quest_npc_index = 0;
+    gs.return_to = null;
 }
 
 function startGame(data) {
@@ -146,6 +159,8 @@ function handleAction(choice) {
             gs.log = [];
             return townRespond(townName(), "What do you want to do?", []);
         case "load_menu": return loadAction(choice);
+        case "quest_hub": return questHubAction(choice);
+        case "quest_npc": return questNpcAction(gs.quest_npc_index || 0, choice);
         case "location":
             gs.log = [];
             return townRespond(townName(), "What do you want to do?", []);
@@ -258,7 +273,10 @@ function townAction(choice) {
         return respond("save_menu", "Save Game", "",
             ["Save as '" + default_name + "'", "(Back)"]);
 
-    } else if (choice === 4) { // Quit
+    } else if (choice === 4) { // Quests
+        return questHubState();
+
+    } else if (choice === 5) { // Quit
         gs.player = null;
         gs.enemy = null;
         gs.log = [];
@@ -266,6 +284,124 @@ function townAction(choice) {
     }
 
     return townRespond(townName(), "What do you want to do?");
+}
+
+//=============================
+// Quests (Town only)
+//=============================
+// Three repeatable quest givers live in Town. Accept a job, kill what they
+// want, then bring the material back to the same NPC for gold and XP.
+
+function countMaterial(p, material) {
+    let n = 0;
+    p.inventory.forEach((item) => { if (item.name === material) n++; });
+    return n;
+}
+
+function takeMaterial(p, material, amount) {
+    let taken = 0;
+    for (let i = p.inventory.length - 1; i >= 0 && taken < amount; i--) {
+        if (p.inventory[i].name === material) {
+            p.inventory.splice(i, 1);
+            taken++;
+        }
+    }
+    return taken;
+}
+
+// Where to go once a level-up is finished. Quests put you back in front of the
+// NPC you were talking to instead of dropping you in the middle of Town.
+function afterQuestOrCombat() {
+    if (gs.return_to === "quest_npc") return questNpcState(gs.quest_npc_index);
+    if (gs.return_to === "quest_hub") return questHubState();
+    return afterCombat();
+}
+
+function questHubState() {
+    const p = gs.player;
+    if (!p) return getState();
+    const options = [];
+    const body = [];
+    gs.quest_npcs.forEach((npc, i) => {
+        let ready = 0;
+        questsFor(i).forEach((q) => {
+            const key = i + ":" + q.index;
+            if (gs.quest_accepted[key] && countMaterial(p, q.material) >= q.amount) ready++;
+        });
+        options.push(npc.name + (ready ? " — " + ready + " ready to hand in!" : ""));
+        body.push(npc.name + ": " + questsFor(i).length + " standing job(s)");
+    });
+    options.push("(Back)");
+    return respond("quest_hub", "Quest Givers", body.join("\n"), options);
+}
+
+function questHubAction(choice) {
+    if (choice >= gs.quest_npcs.length) {
+        gs.return_to = null;   // back to the town menu
+        return townRespond(townName(), "What do you want to do?");
+    }
+    gs.return_to = "quest_npc";
+    gs.quest_npc_index = choice;
+    return questNpcState(choice);
+}
+
+function questNpcState(npcIndex) {
+    const p = gs.player;
+    if (!p) return getState();
+    if (npcIndex >= gs.quest_npcs.length) return questHubState();
+    gs.quest_npc_index = npcIndex;
+    const quests = questsFor(npcIndex);
+    const options = [];
+    const body = [];
+    quests.forEach((q) => {
+        const key = npcIndex + ":" + q.index;
+        const have = countMaterial(p, q.material);
+        const done = gs.quest_done[key] || 0;
+        body.push(q.material + " ×" + q.amount + "  →  " + q.gold + "g, " + q.xp + " XP" +
+            (done ? " (handed in " + done + "×)" : ""));
+        if (!gs.quest_accepted[key]) {
+            options.push("[Accept] " + q.material + " ×" + q.amount);
+        } else if (have >= q.amount) {
+            options.push("[Turn in] " + q.material + " ×" + q.amount + " (you have " + have + ")");
+        } else {
+            options.push("[Waiting] " + q.material + " ×" + q.amount + " — you have " + have);
+        }
+    });
+    options.push("(Back)");
+    return respond("quest_npc", gs.quest_npcs[npcIndex].name, body.join("\n"), options,
+        { quest_npc_index: npcIndex });
+}
+
+function questNpcAction(npcIndex, choice) {
+    const p = gs.player;
+    if (!p) return getState();
+    const quests = questsFor(npcIndex);
+    if (choice >= quests.length) return questHubState();
+    const q = quests[choice];
+    const key = npcIndex + ":" + q.index;
+
+    if (!gs.quest_accepted[key]) {
+        gs.quest_accepted[key] = true;
+        gs.log = ["You accepted: " + q.material + " ×" + q.amount];
+        return questNpcState(npcIndex);
+    }
+
+    const have = countMaterial(p, q.material);
+    if (have < q.amount) {
+        gs.log = ["You need " + q.amount + " × " + q.material + " (you have " + have + ")."];
+        return questNpcState(npcIndex);
+    }
+
+    takeMaterial(p, q.material, q.amount);
+    p.add_gold(q.gold);
+    gs.quest_done[key] = (gs.quest_done[key] || 0) + 1;
+    gs.log = [
+        "Quest complete: " + q.material + " ×" + q.amount + "!",
+        "Paid " + q.gold + " gold and " + q.xp + " XP."
+    ];
+    grantXp(p, q.xp);
+    if (p.skill_points > 0) return allocationState();
+    return questNpcState(npcIndex);
 }
 
 // -----------------------------
@@ -440,15 +576,27 @@ function combatReward(title) {
         gs.log.push("Dungeon cleared! Bonus: " + bonus_gold + " gold, " + bonus_xp + " XP!");
     }
 
+    // Quest materials from the kill (bosses drop nothing yet).
+    const drop = e.roll_drop();
+    if (drop) {
+        for (let i = 0; i < drop[1]; i++) p.add_item(createItem(drop[0]));
+        gs.log.push("Collected " + drop[1] + " × " + drop[0] + "!");
+    }
+
+    grantXp(p, xp);
+
+    gs.enemy = null;
+    if (p.skill_points > 0) return allocationState();
+    return afterCombat();
+}
+
+// Add XP and run any level-ups it triggers.
+function grantXp(p, xp) {
     p.xp += xp;
     while (p.xp >= p.xp_to_next()) {
         p.xp -= p.xp_to_next();
         handleLevelUp();
     }
-
-    gs.enemy = null;
-    if (p.skill_points > 0) return allocationState();
-    return afterCombat();
 }
 
 function handleLevelUp() {
@@ -501,7 +649,7 @@ function allocationAction(choice) {
             saveGame(p, p.current_save);
             gs.log.push("Game autosaved!");
         }
-        return afterCombat();
+        return afterQuestOrCombat();
     }
     return allocationState();
 }
@@ -571,6 +719,45 @@ function shopBuy(item, qty) {
     }
 
     return showShop(gs.shop_name);
+}
+
+function sellItem(name) {
+    // Sell one item to the NPC you are standing at, at 20% under shop price.
+    // Equipped gear can be sold too - the caller warns first when it is the
+    // last weapon/armour of its kind, which leaves you with nothing equipped.
+    const p = gs.player;
+    if (!p) return getState();
+    const price = sellPrice(name);
+    const back = () => showShop(gs.shop_name || Object.keys(SHOP_NPCS)[0]);
+
+    if (!price) {
+        gs.log = ["Nobody wants to buy that."];
+        return back();
+    }
+
+    const index = p.inventory.findIndex((item) => item.name === name);
+    let item;
+    if (index !== -1) {
+        item = p.inventory.splice(index, 1)[0];
+    } else if (p.weapon && p.weapon.name === name) {
+        item = p.weapon; p.weapon = null;
+    } else if (p.armor && p.armor.name === name) {
+        item = p.armor; p.armor = null;
+    } else if (p.shield && p.shield.name === name) {
+        item = p.shield; p.shield = null;
+    } else {
+        gs.log = ["You don't have that any more."];
+        return back();
+    }
+
+    if (item === p.weapon || item === p.armor || item === p.shield) {
+        p.ac = p.calc_ac();
+        p.recalc_hp();
+    }
+
+    p.add_gold(price);
+    gs.log = ["Sold " + item.name + " for " + price + "g."];
+    return back();
 }
 
 function showShop(shop_name) {
@@ -814,6 +1001,8 @@ const Game = {
     forceSave: forceSave,
     loadList: loadList,
     shopBuy: shopBuy,
+    sellItem: sellItem,
+    sellPrice: sellPrice,
     mapData: mapData,
     travel: travel
 };

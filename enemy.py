@@ -21,6 +21,23 @@ TEMPLATES = {
 XP_REWARD_MULTIPLIER = 1.4    # +40% XP
 GOLD_REWARD_MULTIPLIER = 1.6  # +60% gold
 
+# Monster -> the quest material it drops.
+# Demon Lord and Elder Dragon deliberately drop nothing yet.
+DROPS = {
+    "Goblin": "Metal Fragments",
+    "Spider": "Web String",
+    "Slime": "Slime Ball",
+    "Zombie": "Rotten Flesh",
+    "Skeleton": "Bone",
+    "Wolf": "Fur",
+    "Ghost": "Plasma",
+}
+
+# Chance a kill drops anything, and how many pieces it is worth.
+DROP_CHANCE = 0.75
+DROP_MIN = 1
+DROP_MAX = 3
+
 class Enemy:
     def __init__(self, name, level):
         self.name = name
@@ -51,6 +68,19 @@ class Enemy:
 
     def is_alive(self):
         return self.hp > 0
+
+    def roll_drop(self):
+        """Quest material dropped on death, or None.
+
+        Returns the material name and how many pieces dropped, e.g.
+        ("Plasma", 2), so the caller can add them to the inventory.
+        """
+        material = DROPS.get(self.name)
+        if not material:
+            return None
+        if random.random() >= DROP_CHANCE:
+            return None
+        return material, random.randint(DROP_MIN, DROP_MAX)
 
     def take_damage(self, amount):
         self.hp -= amount

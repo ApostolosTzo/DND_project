@@ -1,12 +1,20 @@
 from flask import Flask, render_template, jsonify, request
 from player import Player, create_character, make_character, STAT_ORDER, CLASSES, RACES
-from items import ITEMS, create_item, get_item
+from items import ITEMS, create_item, get_item, is_material
 from enemy import generate_enemy, generate_dungeon_enemy
 from dice import roll
 from save_load import save_game, load_game, list_saves, save_exists
 from world_map import LOCATIONS
+from quests import QUESTS, roll_quest_npcs, quests_for
+from shop import SHOP_NPCS, sell_price
 
 app = Flask(__name__)
+
+# The town menu. Keep in step with templates/index.html handleClick().
+TOWN_OPTIONS = ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"]
+# No "Quit" on the main menu: it never did anything, and everything else in
+# the game is reachable from the town screen's Quit option.
+MENU_OPTIONS = ["New Game", "Load Game"]
 
 gs = {
     "player": None,
@@ -17,6 +25,12 @@ gs = {
     "pending_save_name": None,
     "current_location": None,
     "dungeon_floor": 0,
+    "shop_mode": "buy",
+    "quest_npcs": [],
+    "quest_accepted": {},
+    "quest_done": {},
+    "quest_npc_index": 0,
+    "return_to": None,
 }
 
 def player_json(p):
@@ -108,6 +122,13 @@ def reset_run():
     gs["dungeon_floor"] = 0
     gs["pending_save_name"] = None
     gs["shop_name"] = None
+    gs["shop_mode"] = "buy"
+    # Fresh quest givers and a clean quest log for every new run.
+    gs["quest_npcs"] = roll_quest_npcs()
+    gs["quest_accepted"] = {}
+    gs["quest_done"] = {}
+    gs["quest_npc_index"] = 0
+    gs["return_to"] = None
 
 @app.route("/start", methods=["POST"])
 def start_game():
@@ -120,7 +141,7 @@ def start_game():
     gs["screen"] = "town"
     gs["current_location"] = "town"
     gs["log"] = ["Welcome, adventurer!"]
-    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
 # Function to handle player actions
 # locations and their connections are defined in world_map.py
@@ -148,27 +169,31 @@ def handle_action():
     elif gs["screen"] == "save_menu":
         gs["screen"] = "town"
         gs["log"] = []
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     elif gs["screen"] == "confirm_overwrite":
         if choice == 0:
             return force_save()
         gs["screen"] = "town"
         gs["pending_save_name"] = None
         gs["log"] = []
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     elif gs["screen"] == "load_menu":
         return load_action(choice)
+    elif gs["screen"] == "quest_hub":
+        return quest_hub_action(choice)
+    elif gs["screen"] == "quest_npc":
+        return quest_npc_action(gs.get("quest_npc_index", 0), choice)
     # Handle location travel
     elif gs["screen"] == "location":
         gs["screen"] = "town"
         gs["log"] = []
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     elif gs["screen"] == "dungeon":
         if choice == 0:
             return enter_dungeon()
         gs["screen"] = "town"
         gs["log"] = []
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     elif gs["screen"] == "dungeon_floor":
         return dungeon_floor_action(choice)
     elif gs["screen"] == "dungeon_victory":
@@ -176,7 +201,7 @@ def handle_action():
         gs["current_location"] = "village1"
         gs["screen"] = "town"
         gs["log"] = ["You return to Village 1, victorious!"]
-        return respond("town", "Village 1", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", "Village 1", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     elif gs["screen"] == "game_over":
         gs["player"] = None
         gs["enemy"] = None
@@ -202,7 +227,7 @@ def do_save():
     save_game(p, name)
     p.current_save = name
     gs["log"] = [f"Game saved as '{name}'!"]
-    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
 @app.route("/force_save", methods=["POST"])
 def force_save():
@@ -215,7 +240,7 @@ def force_save():
     p.current_save = name
     gs["screen"] = "town"
     gs["log"] = [f"Game saved as '{name}'!"]
-    return respond("town", "Saved!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", "Saved!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
 # ---- Town ----
 def town_action(choice):
@@ -245,14 +270,17 @@ def town_action(choice):
         default = p.current_save or p.name
         return respond("save_menu", "Save Game", "", [f"Save as '{default}'", "(Back)"])
 
-    elif choice == 4:  # Quit
+    elif choice == 4:  # Quests
+        return quest_hub_state()
+
+    elif choice == 5:  # Quit
         gs["player"] = None
         gs["enemy"] = None
         gs["screen"] = "main_menu"
         gs["log"] = []
         return respond("main_menu", "DUNGEONS & DRAGONS", "", ["New Game", "Load Game"])
 
-    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
 #==============================
 # ---- Combat ----
@@ -311,7 +339,7 @@ def combat_action(choice):
             gs["enemy"] = None
             gs["screen"] = "town"
             gs["log"] = ["You fled successfully!"]
-            return respond("town", "Fled!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+            return respond("town", "Fled!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
         else:
             gs["log"].append("Failed to flee!")
             result2 = web_enemy_attack(p, e)
@@ -413,15 +441,27 @@ def combat_reward(title):
         xp += bonus_xp
         gs["log"].append(f"Dungeon cleared! Bonus: {bonus_gold} gold, {bonus_xp} XP!")
 
-    p.xp += xp
-    while p.xp >= p.xp_to_next():
-        p.xp -= p.xp_to_next()
-        handle_level_up()
+    # Quest materials from the kill (bosses drop nothing yet).
+    drop = e.roll_drop()
+    if drop:
+        material, count = drop
+        for _ in range(count):
+            p.add_item(create_item(material))
+        gs["log"].append(f"Collected {count} × {material}!")
+
+    grant_xp(p, xp)
 
     gs["enemy"] = None
     if p.skill_points > 0:
         return allocation_state()
     return after_combat()
+
+# Add XP and run any level-ups it triggers.
+def grant_xp(p, xp):
+    p.xp += xp
+    while p.xp >= p.xp_to_next():
+        p.xp -= p.xp_to_next()
+        handle_level_up()
 
 # Level up handling
 def handle_level_up():
@@ -468,6 +508,111 @@ def allocation_action(choice):
     return allocation_state()
 
 #==============================
+# ---- Quests (Town only) ----
+#==============================
+# Three repeatable quest givers live in Town. Accept a job, kill what they want,
+# then bring the material back to the same NPC to collect gold and XP.
+
+def _count_material(p, material):
+    return sum(1 for item in p.inventory if item.name == material)
+
+def _take_material(p, material, amount):
+    taken = 0
+    for item in list(p.inventory):
+        if item.name == material and taken < amount:
+            p.remove_item(item)
+            taken += 1
+    return taken
+
+def quest_hub_state():
+    p = gs["player"]
+    if not p:
+        return get_state()
+    npcs = gs["quest_npcs"]
+    options = []
+    body = []
+    for i, npc in enumerate(npcs):
+        ready = 0
+        for q in quests_for(i):
+            key = f"{i}:{q['index']}"
+            if gs["quest_accepted"].get(key) and _count_material(p, q["material"]) >= q["amount"]:
+                ready += 1
+        mark = f" — {ready} ready to hand in!" if ready else ""
+        options.append(f"{npc['name']}{mark}")
+        body.append(f"{npc['name']}: {len(quests_for(i))} standing job(s)")
+    options.append("(Back)")
+    return respond("quest_hub", "Quest Givers", "\n".join(body), options)
+
+def quest_hub_action(choice):
+    npcs = gs["quest_npcs"]
+    if choice >= len(npcs):
+        gs["return_to"] = None  # back to the town menu
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
+    gs["return_to"] = "quest_npc"
+    gs["quest_npc_index"] = choice
+    return quest_npc_state(choice)
+
+def quest_npc_state(npc_index):
+    p = gs["player"]
+    if not p:
+        return get_state()
+    npcs = gs["quest_npcs"]
+    if npc_index >= len(npcs):
+        return quest_hub_state()
+    gs["quest_npc_index"] = npc_index
+    quests = quests_for(npc_index)
+    options = []
+    body = []
+    for q in quests:
+        key = f"{npc_index}:{q['index']}"
+        have = _count_material(p, q["material"])
+        accepted = gs["quest_accepted"].get(key, False)
+        done = gs["quest_done"].get(key, 0)
+        times = f" (handed in {done}×)" if done else ""
+        body.append(f"{q['material']} ×{q['amount']}  →  {q['gold']}g, {q['xp']} XP{times}")
+        if not accepted:
+            options.append(f"[Accept] {q['material']} ×{q['amount']}")
+        elif have >= q["amount"]:
+            options.append(f"[Turn in] {q['material']} ×{q['amount']} (you have {have})")
+        else:
+            options.append(f"[Waiting] {q['material']} ×{q['amount']} — you have {have}")
+    options.append("(Back)")
+    return respond("quest_npc", npcs[npc_index]["name"], "\n".join(body), options,
+                   extra={"quest_npc_index": npc_index})
+
+def quest_npc_action(npc_index, choice):
+    p = gs["player"]
+    if not p:
+        return get_state()
+    quests = quests_for(npc_index)
+    if choice >= len(quests):
+        return quest_hub_state()
+    q = quests[choice]
+    key = f"{npc_index}:{q['index']}"
+
+    if not gs["quest_accepted"].get(key):
+        gs["quest_accepted"][key] = True
+        gs["log"] = [f"You accepted: {q['material']} ×{q['amount']}"]
+        return quest_npc_state(npc_index)
+
+    have = _count_material(p, q["material"])
+    if have < q["amount"]:
+        gs["log"] = [f"You need {q['amount']} × {q['material']} (you have {have})."]
+        return quest_npc_state(npc_index)
+
+    _take_material(p, q["material"], q["amount"])
+    p.add_gold(q["gold"])
+    gs["quest_done"][key] = gs["quest_done"].get(key, 0) + 1
+    gs["log"] = [
+        f"Quest complete: {q['material']} ×{q['amount']}!",
+        f"Paid {q['gold']} gold and {q['xp']} XP.",
+    ]
+    grant_xp(p, q["xp"])
+    if p.skill_points > 0:
+        return allocation_state()
+    return quest_npc_state(npc_index)
+
+#==============================
 # ---- Shop ----
 #==============================
 from shop import SHOP_NPCS
@@ -483,7 +628,7 @@ def shop_state():
     # set the log message and return to the town screen
     if not shop_names: 
         gs["log"] = ["No shops here."]
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     return respond("shop_select", "Which shop?", "", shop_names + ["(Back)"])
 
 # Shop Select Action
@@ -494,7 +639,7 @@ def shop_select_action(choice):
     # If the choice is out of bounds (e.g., "(Back)" option), return to town
     if choice >= len(shop_names): 
         gs["screen"] = "town"
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
     # If a valid shop is selected, set the current shop in the game state and show the shop interface
     shop_name = shop_names[choice]
@@ -540,6 +685,41 @@ def shop_buy():
 
     return show_shop(shop_name)
 
+@app.route("/sell", methods=["POST"])
+def sell_item():
+    """Sell one item to the NPC you are standing at, at 20% under shop price."""
+    p = gs["player"]
+    if not p:
+        return get_state()
+    data = request.json
+    item_name = data.get("item")
+    price = sell_price(item_name)
+    if not price:
+        gs["log"] = ["Nobody wants to buy that."]
+        return show_shop(gs.get("shop_name") or next(iter(SHOP_NPCS)))
+
+    index = next((i for i, item in enumerate(p.inventory) if item.name == item_name), None)
+    if index is not None:
+        item = p.inventory.pop(index)
+    elif p.weapon and p.weapon.name == item_name:
+        item, p.weapon = p.weapon, None
+    elif p.armor and p.armor.name == item_name:
+        item, p.armor = p.armor, None
+    elif p.shield and p.shield.name == item_name:
+        item, p.shield = p.shield, None
+    else:
+        gs["log"] = ["You don't have that any more."]
+        return show_shop(gs.get("shop_name") or next(iter(SHOP_NPCS)))
+
+    # Selling equipped gear leaves you unequipped until you equip something else.
+    if item is p.weapon or item is p.armor or item is p.shield:
+        p.ac = p.calc_ac()
+        p.recalc_hp()
+
+    p.add_gold(price)
+    gs["log"] = [f"Sold {item.name} for {price}g."]
+    return show_shop(gs.get("shop_name") or next(iter(SHOP_NPCS)))
+
 def show_shop(shop_name):
     p = gs["player"]
     shop = SHOP_NPCS[shop_name]
@@ -582,7 +762,7 @@ def inventory_action(choice):
     names = list(grouped.keys())
     if not names or choice >= len(names):
         gs["screen"] = "town"
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
     item = grouped[names[choice]][0]
 
@@ -649,7 +829,7 @@ def load_action(choice):
     gs["screen"] = "town"
     gs["current_location"] = "town"
     gs["log"] = [f"Loaded '{name}'!"]
-    return respond("town", "Game Loaded!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", "Game Loaded!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
 #================================
 # ---- Map ----
@@ -679,11 +859,11 @@ def travel():
     current_id = gs["current_location"] or "town"
     if target_id == current_id:
         gs["log"] = ["You are already here."]
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     current = LOCATIONS.get(current_id)
     if not current or target_id not in current["connects_to"]:
         gs["log"] = ["You can't reach that location from here."]
-        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     target = LOCATIONS.get(target_id)
     if not target:
         return get_state()
@@ -691,7 +871,7 @@ def travel():
     gs["log"] = [f"You arrive at {target['name']}."]
     if target["type"] in ("town", "village"):
         gs["screen"] = "town"
-        return respond("town", target["name"], "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+        return respond("town", target["name"], "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
     elif target["type"] == "dungeon":
         gs["screen"] = "dungeon"
         return respond("dungeon", target["name"], "The entrance looms before you...", ["Enter", "(Back)"])
@@ -769,12 +949,19 @@ def advance_dungeon_floor():
 
 # After all combat/level-up/allocation is done, continue the game
 def after_combat():
+    # Quests put you back in front of the NPC you were talking to instead of
+    # dropping you in the middle of Town.
+    if gs.get("return_to") == "quest_npc":
+        return quest_npc_state(gs.get("quest_npc_index", 0))
+    if gs.get("return_to") == "quest_hub":
+        return quest_hub_state()
+
     if gs["dungeon_floor"] > 0:
         if gs["dungeon_floor"] == 10:
             return respond("dungeon_victory", "DUNGEON CLEARED!", "You defeated the boss and conquered the dungeon!", ["Return to Village 1"])
         return dungeon_floor_state()
     gs["screen"] = "town"
-    return respond("town", "Victory!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quit"])
+    return respond("town", "Victory!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
 # Dungeon Merchant
 def dungeon_merchant():

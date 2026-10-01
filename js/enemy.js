@@ -18,6 +18,23 @@ const BOSS_NAMES = ["Demon Lord", "Elder Dragon"];
 const XP_REWARD_MULTIPLIER = 1.4;   // +40% XP
 const GOLD_REWARD_MULTIPLIER = 1.6; // +60% gold
 
+// Monster -> the quest material it drops.
+// Demon Lord and Elder Dragon deliberately drop nothing yet.
+const DROPS = {
+    "Goblin": "Metal Fragments",
+    "Spider": "Web String",
+    "Slime": "Slime Ball",
+    "Zombie": "Rotten Flesh",
+    "Skeleton": "Bone",
+    "Wolf": "Fur",
+    "Ghost": "Plasma"
+};
+
+// Chance a kill drops anything, and how many pieces it is worth.
+const DROP_CHANCE = 0.75;
+const DROP_MIN = 1;
+const DROP_MAX = 3;
+
 function Enemy(name, level) {
     this.name = name;
     this.level = level;
@@ -48,6 +65,14 @@ Enemy.prototype.attack_damage = function () {
 
 Enemy.prototype.is_alive = function () {
     return this.hp > 0;
+};
+
+// Quest material dropped on death, or null. Returns [material, count].
+Enemy.prototype.roll_drop = function () {
+    const material = DROPS[this.name];
+    if (!material) return null;
+    if (Math.random() >= DROP_CHANCE) return null;
+    return [material, randInt(DROP_MIN, DROP_MAX)];
 };
 
 Enemy.prototype.take_damage = function (amount) {
