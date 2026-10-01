@@ -523,6 +523,59 @@ Grouped consumables by name (same pattern as the inventory screen). The options 
 ### Files changed
 - `game_server.py` — `combat_action()` and `combat_item_action()` both build a grouped item dict and index into group names instead of raw item list
 
+## PWA Port (GitHub Pages, fully client-side)
+
+### Goal
+Run the game from a GitHub repository with no Python host, installable on a phone and playable offline. GitHub Pages is static-only, so the Flask layer was replaced by a browser port of the same game logic.
+
+### What was added
+- **`index.html` (root)** — the existing browser UI, with `fetch()` calls to the Flask endpoints replaced by direct calls into `Game.*`. Also gained the PWA head tags (viewport, manifest, theme colour, Apple meta tags) and service worker registration.
+- **`manifest.json`** — app name, `#1a1a2e` theme/background, `display: standalone`, relative `start_url`/`scope` so it works at both `user.github.io/` and `user.github.io/repo/`.
+- **`sw.js`** — pre-caches the 15 app assets into `dnd-pwa-v1`. Navigations are network-first (so updates land) with a cache fallback; everything else is cache-first.
+- **`icons/`** — placeholder 192 / 512 / maskable-512 / apple-touch PNGs, generated as gold-on-navy art to be swapped later.
+- **`.nojekyll`** — stops GitHub Pages running Jekyll over the repo.
+- **`js/`** — the port:
+
+| Python | JavaScript |
+|---|---|
+| `dice.py` | `js/dice.js` |
+| `items.py` | `js/items.js` |
+| `enemy.py` | `js/enemy.js` |
+| `player.py` | `js/player.js` |
+| `shop.py` | `js/shop.js` |
+| `world_map.py` | `js/world_map.js` |
+| `save_load.py` | `js/saves.js` (localStorage instead of `saves/*.json`) |
+| `game_server.py` (routes + `gs` dict + handlers) | `js/game.js` (same functions, returns the same JSON object instead of `jsonify`) |
+
+The UI was left alone deliberately: `respond()` returns the exact object Flask used to serialise, so `render()` and `handleClick()` work unchanged.
+
+### Design decisions
+1. **Plain `<script>` tags, no bundler / no modules** — no build step to push to Pages, and nothing to break if someone opens the file directly.
+2. **Saves moved to `localStorage`** under one `dnd_saves` key, keeping the exact save schema the Python version writes (so the JSON shape stays familiar). Works per-device/per-browser rather than on the server.
+3. **`gs["screen"] = screen` inside `respond()`** — the state-desync fix from the shop bug chain was carried over, so the client and the in-page state machine can't drift apart.
+
+### Porting bugs caught and fixed
+1. **Dungeon shop list** — Python's `loc.get("shops", default)` returns the *empty* list for the Dungeon (only missing keys get the default). The first JS version treated `[]` as falsy and offered all 5 shops there. Fixed with `hasOwnProperty`, and covered by a test.
+2. **Corrupt/missing save** — `loadGame()` returns `null` now instead of throwing on `player.current_save`.
+3. **Offline navigation through a proxy** — the first service worker only fell back to cache when `fetch()` *rejected*. A proxy answering `502` resolves normally, so an error page was shown instead of the cached app. Any non-OK navigation response now falls back to the cached shell.
+
+### Verification
+- Node harness runs the whole state machine end-to-end: main menu → creation → fight → shop buy/overwrite save → load → inventory equip/heal → map travel (incl. the unreachable and no-shop cases) → full 10-floor dungeon → death. Passing repeatedly with random dice.
+- Browser check on `localhost`: character creation, combat math (`40 xp * level/2 = 20` matches Python), save → reload → load, all 15 assets cached, manifest + icons return 200.
+- **True offline test**: killed the web server mid-session and reloaded — the shell, all scripts, the save data and combat all worked from the service worker cache with zero console errors.
+
+### Files changed
+- `index.html` (new, root) — PWA head tags + `Game.*` instead of `fetch()`
+- `manifest.json`, `sw.js`, `.nojekyll`, `icons/*` (new)
+- `js/*.js` (8 new files — port of the Python modules)
+- `README.md` — two run options, PWA/install section, icon replacement guide
+- `PROGRESS.md` — this entry
+
+### Notes
+- The Flask build (`python game_server.py` + `templates/index.html`) still works untouched; it is now the server-side variant.
+- When you change game rules, change both `*.py` and `js/*`.
+- When you replace the icons, bump `CACHE_VERSION` in `sw.js` so returning visitors get them.
+
 ## To Do
 - Quest system (quest lines with objectives and rewards)
 - Crafting system (craft items using enemy drops)

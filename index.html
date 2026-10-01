@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>DND Terminal</title>
+    <meta name="description" content="A browser-based Dungeons &amp; Dragons-style RPG with world map, dungeon crawling and turn-based combat.">
+    <meta name="theme-color" content="#1a1a2e">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="DND Terminal">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        #app {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+            width: 100%;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            text-align: center;
+            padding: 15px;
+            border-bottom: 2px solid #c9a84c;
+            margin-bottom: 20px;
+        }
+        header h1 { color: #c9a84c; font-size: 1.4em; letter-spacing: 3px; }
+        #main {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+        }
+        #left {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+        }
+        #right {
+            flex: 1;
+            background: #16213e;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            min-width: 220px;
+        }
+        #right h3 { color: #c9a84c; font-size: 0.9em; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        #right p { margin: 4px 0; }
+        #right .stat { color: #a8d8ea; }
+        #right .val  { color: #e0e0e0; float: right; }
+        #screen-title {
+            color: #c9a84c;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #333;
+        }
+        #screen-body {
+            white-space: pre-wrap;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+            line-height: 1.5;
+            padding: 10px;
+            background: #16213e;
+            border-radius: 6px;
+            min-height: 80px;
+        }
+        #options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        #options button {
+            background: #0f3460;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 10px 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            cursor: pointer;
+            text-align: left;
+            border-radius: 4px;
+            transition: 0.2s;
+        }
+        #options button:hover { background: #1a5276; border-color: #c9a84c; }
+        #options button:active { background: #0b2545; }
+        #log {
+            margin-top: 15px;
+            padding: 10px;
+            background: #111;
+            border-radius: 6px;
+            font-size: 0.8em;
+            color: #aaa;
+            min-height: 40px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        #log p { margin: 2px 0; }
+        #log p:first-child { color: #e0e0e0; }
+        #map-container {
+            margin-top: 15px;
+            background: #16213e;
+            border-radius: 6px;
+            padding: 8px;
+            width: 100%;
+        }
+        #map-container svg {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        #create-form { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
+        #create-form label { color: #a8d8ea; font-size: 0.9em; }
+        #create-form input, #create-form select {
+            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            padding: 8px 10px; font-family: 'Courier New', monospace; font-size: 0.95em;
+            border-radius: 4px; width: 100%;
+        }
+        #create-form select option { background: #16213e; }
+        #create-form button {
+            background: #c9a84c; color: #1a1a2e; border: none;
+            padding: 10px; font-size: 1em; cursor: pointer;
+            border-radius: 4px; font-family: 'Courier New', monospace; margin-top: 6px;
+        }
+        #create-form button:hover { background: #dbb95c; }
+        #info-box {
+            background: #0f3460; border: 1px solid #333; border-radius: 6px;
+            padding: 10px; margin-top: 6px; font-size: 0.85em; min-height: 40px;
+        }
+        #info-box .label { color: #a8d8ea; }
+        #info-box .value { color: #e0e0e0; float: right; }
+        #hp-bar {
+            background: #333; height: 8px; border-radius: 4px; margin: 6px 0; overflow: hidden;
+        }
+        #hp-bar div { background: #27ae60; height: 100%; transition: width 0.3s; }
+        #xp-bar {
+            background: #333; height: 6px; border-radius: 3px; margin: 4px 0; overflow: hidden;
+        }
+        #xp-bar div { background: #a8d8ea; height: 100%; transition: width 0.3s; }
+        #buy-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8); justify-content: center; align-items: center;
+        }
+        #buy-box {
+            background: #16213e; padding: 25px; border-radius: 10px;
+            border: 1px solid #c9a84c; text-align: center; min-width: 300px;
+        }
+        #buy-box h3 { color: #c9a84c; margin-bottom: 15px; }
+        #buy-box input {
+            background: #0f3460; color: #e0e0e0; border: 1px solid #333;
+            padding: 8px; font-size: 1.1em; width: 80px; text-align: center;
+            border-radius: 4px; font-family: 'Courier New', monospace;
+        }
+        #buy-box button {
+            background: #c9a84c; color: #1a1a2e; border: none; padding: 8px 20px;
+            margin: 5px; font-size: 0.95em; cursor: pointer; border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        #buy-box button:hover { background: #dbb95c; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <header><h1>⚔ DUNGEONS & DRAGONS ⚔</h1></header>
+    <div id="main">
+        <div id="left">
+            <div id="screen-title"></div>
+            <div id="screen-body"></div>
+            <div id="options"></div>
+            <div id="log"></div>
+            <div id="map-container"></div>
+        </div>
+        <div id="right">
+            <h3>Player</h3>
+            <p><span class="stat">Name</span> <span class="val" id="p-name">-</span></p>
+            <p><span class="stat">Class</span> <span class="val" id="p-class">-</span></p>
+            <p><span class="stat">Level</span> <span class="val" id="p-level">-</span></p>
+            <p><span class="stat">HP</span> <span class="val" id="p-hp">-/-</span></p>
+            <div id="hp-bar"><div id="hp-fill"></div></div>
+            <p><span class="stat">AC</span> <span class="val" id="p-ac">-</span></p>
+            <p><span class="stat">Gold</span> <span class="val" id="p-gold">-</span></p>
+            <p><span class="stat">XP</span> <span class="val" id="p-xp">-</span></p>
+            <div id="xp-bar"><div id="xp-fill"></div></div>
+            <p><span class="stat">Weapon</span> <span class="val" id="p-weapon">-</span></p>
+            <p><span class="stat">Armor</span> <span class="val" id="p-armor">-</span></p>
+        </div>
+    </div>
+</div>
+
+<div id="buy-overlay">
+    <div id="buy-box">
+        <h3 id="buy-title">Buy</h3>
+        <p id="buy-info" style="margin-bottom:12px;color:#aaa;"></p>
+        <div><input type="number" id="buy-qty" value="1" min="1"></div>
+        <div style="margin-top:12px;">
+            <button onclick="buyConfirm()">Buy</button>
+            <button onclick="hideBuy()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/dice.js"></script>
+<script src="js/items.js"></script>
+<script src="js/enemy.js"></script>
+<script src="js/player.js"></script>
+<script src="js/shop.js"></script>
+<script src="js/world_map.js"></script>
+<script src="js/saves.js"></script>
+<script src="js/game.js"></script>
+<script>
+let currentState = null;
+let buyItemName = null;
+let raceData = [];
+let classData = [];
+let mapLocations = null;
+
+
+function loadMapData() {
+    mapLocations = Game.mapData().locations;
+}
+
+function travel(id) {
+    render(Game.travel(id));
+}
+
+function drawMap(currentId) {
+    const container = document.getElementById("map-container");
+    if (!mapLocations || !currentId || !mapLocations[currentId]) {
+        container.innerHTML = "";
+        return;
+    }
+    const locs = mapLocations;
+    const current = locs[currentId];
+    let svg = `<svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg"><rect width="520" height="360" fill="#16213e" rx="4"/>`;
+    const drawn = new Set();
+    for (const [id, loc] of Object.entries(locs)) {
+        for (const target of loc.connects_to) {
+            const key = [id, target].sort().join("-");
+            if (drawn.has(key)) continue;
+            drawn.add(key);
+            const t = locs[target];
+            if (t) svg += `<line x1="${loc.x}" y1="${loc.y}" x2="${t.x}" y2="${t.y}" stroke="#555" stroke-width="2"/>`;
+        }
+    }
+    for (const [id, loc] of Object.entries(locs)) {
+        const isCurrent = id === currentId;
+        const isConnected = current.connects_to.includes(id);
+        const canReach = isCurrent || isConnected;
+        const opacity = canReach ? 1 : 0.35;
+        const r = isCurrent ? 12 : 7;
+        const color = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#c0392b" : "#5dade2";
+        const strokeColor = loc.type === "town" ? "#dbb95c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        if (isCurrent) {
+            svg += `<circle cx="${loc.x}" cy="${loc.y}" r="16" fill="none" stroke="${color}" stroke-width="2" opacity="0.4"><animate attributeName="r" values="12;18;12" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0.15;0.4" dur="2s" repeatCount="indefinite"/></circle>`;
+        }
+        const clickable = isConnected && !isCurrent;
+        svg += `<circle cx="${loc.x}" cy="${loc.y}" r="${r}" fill="${color}" stroke="${strokeColor}" stroke-width="2" opacity="${opacity}"${clickable ? ' style="cursor:pointer" onclick="travel(\'' + id + '\')"' : ""}/>`;
+        const labelY = loc.type === "village" ? loc.y + 22 : loc.y - 15;
+        const labelColor = loc.type === "town" ? "#c9a84c" : loc.type === "dungeon" ? "#e74c3c" : "#85c1e9";
+        svg += `<text x="${loc.x}" y="${labelY}" text-anchor="middle" fill="${labelColor}" font-family="'Courier New',monospace" font-size="11" opacity="${opacity}">${loc.name}</text>`;
+    }
+    svg += `<text x="12" y="22" fill="#a8d8ea" font-family="'Courier New',monospace" font-size="12">You are at: ${current.name}</text>`;
+    svg += "</svg>";
+    container.innerHTML = svg;
+}
+
+function fetchState() {
+    render(Game.getState());
+}
+
+function doAction(choice) {
+    render(Game.action(choice));
+}
+
+function doSave(name) {
+    render(Game.save(name));
+}
+
+function doForceSave() {
+    render(Game.forceSave());
+}
+
+function doLoadList() {
+    render(Game.loadList());
+}
+
+function doStart(data) {
+    render(Game.start(data));
+}
+
+function doShopBuy(item, qty) {
+    render(Game.shopBuy(item, qty));
+}
+
+function showCreateForm() {
+    const d = Game.createForm();
+    raceData = d.races;
+    classData = d.classes;
+
+    document.getElementById("screen-title").textContent = "CREATE CHARACTER";
+    let html = '<div id="create-form">';
+    html += '<label>Name</label><input type="text" id="char-name" value="Adventurer">';
+    html += '<label>Race</label><select id="char-race" onchange="updateInfoBox()">';
+    d.races.forEach(r => html += `<option value="${r[0]}">${r[1]}</option>`);
+    html += '</select>';
+    html += '<label>Class</label><select id="char-class" onchange="updateInfoBox()">';
+    d.classes.forEach(c => html += `<option value="${c[0]}">${c[1]}</option>`);
+    html += '</select>';
+    html += '<div id="info-box"></div>';
+    html += '<button onclick="submitCreate()">Begin Adventure</button>';
+    html += '</div>';
+    document.getElementById("screen-body").innerHTML = html;
+    document.getElementById("options").innerHTML = "";
+    document.getElementById("log").innerHTML = "";
+    updateInfoBox();
+}
+
+function updateInfoBox() {
+    const raceSel = document.getElementById("char-race");
+    const classSel = document.getElementById("char-class");
+    if (!raceSel || !classSel) return;
+
+    const raceIdx = raceSel.selectedIndex;
+    const classIdx = classSel.selectedIndex;
+    const race = raceData[raceIdx];
+    const cls = classData[classIdx];
+
+    let html = '';
+    if (race && race[2]) {
+        html += `<div><span class="label">Race Bonus:</span> <span class="value">${race[2]}</span></div>`;
+    }
+    if (cls) {
+        html += `<div><span class="label">HP:</span> <span class="value">${cls[2]}</span></div>`;
+        html += `<div><span class="label">Primary:</span> <span class="value">${cls[3]}</span></div>`;
+    }
+    document.getElementById("info-box").innerHTML = html;
+}
+
+function submitCreate() {
+    const name = document.getElementById("char-name").value || "Adventurer";
+    const race = document.getElementById("char-race").value;
+    const cls = document.getElementById("char-class").value;
+    doStart({name, race, class: cls});
+}
+
+function render(s) {
+    currentState = s;
+    document.getElementById("screen-title").textContent = s.title || "";
+
+    const body = document.getElementById("screen-body");
+    // Don't overwrite the create form unless we're not in character creation
+    if (s.screen !== "character_creation") {
+        body.textContent = s.body || "";
+    }
+
+    const opts = document.getElementById("options");
+    opts.innerHTML = "";
+    s.options.forEach((opt, i) => {
+        const btn = document.createElement("button");
+        btn.textContent = `> ${opt}`;
+        btn.addEventListener("click", () => handleClick(s.screen, i));
+        opts.appendChild(btn);
+    });
+
+    // Log
+    const log = document.getElementById("log");
+    log.innerHTML = "";
+    const ts = new Date().toTimeString().slice(0, 8);
+    (s.log || []).forEach(msg => {
+        const p = document.createElement("p");
+        p.textContent = `[${ts}] ${msg}`;
+        log.appendChild(p);
+    });
+
+    // Player sidebar
+    if (s.player) {
+        const p = s.player;
+        document.getElementById("p-name").textContent = p.name;
+        document.getElementById("p-class").textContent = p.race + " " + p.class;
+        document.getElementById("p-level").textContent = p.level;
+        document.getElementById("p-hp").textContent = p.hp + "/" + p.max_hp;
+        document.getElementById("p-ac").textContent = p.ac;
+        document.getElementById("p-gold").textContent = p.gold;
+        document.getElementById("p-xp").textContent = p.xp + "/" + p.xp_to_next;
+        document.getElementById("p-weapon").textContent = p.weapon;
+        document.getElementById("p-armor").textContent = p.armor;
+
+        const hpPct = p.max_hp > 0 ? (p.hp / p.max_hp * 100) : 0;
+        document.getElementById("hp-fill").style.width = hpPct + "%";
+        const xpPct = p.xp_to_next > 0 ? (p.xp / p.xp_to_next * 100) : 0;
+        document.getElementById("xp-fill").style.width = xpPct + "%";
+    }
+    drawMap(s.current_location);
+}
+
+function handleClick(screen, index) {
+    if (screen === "main_menu") {
+        if (index === 0) showCreateForm();
+        else if (index === 1) doLoadList();
+    }
+    else if (screen === "load_menu") {
+        if (index === currentState.options.length - 1) fetchState();
+        else doAction(index);
+    }
+    else if (screen === "town") {
+        doAction(index);
+    }
+    else if (screen === "save_menu") {
+        if (index === 0) {
+            const name = currentState.options[0].replace("Save as '", "").replace("'", "");
+            doSave(name);
+        } else {
+            doAction(1);
+        }
+    }
+    else if (screen === "confirm_overwrite") {
+        if (index === 0) {
+            doForceSave();
+        } else {
+            fetchState();
+        }
+    }
+    else if (screen === "combat" || screen === "combat_item") {
+        doAction(index);
+    }
+    else if (screen === "game_over") {
+        fetchState();
+    }
+    else if (screen === "stat_allocation") {
+        doAction(index);
+    }
+    else if (screen === "shop_select") {
+        doAction(index);
+    }
+    else if (screen === "shop") {
+        if (index === currentState.options.length - 1) {
+            doAction(index);
+        } else {
+            showBuy(index);
+        }
+    }
+    else if (screen === "inventory") {
+        doAction(index);
+    }
+    else if (screen === "location") {
+        doAction(index);
+    }
+    else if (screen === "dungeon_floor") {
+        doAction(index);
+    }
+    else if (screen === "dungeon_victory") {
+        doAction(index);
+    }
+    else if (screen === "dungeon") {
+        doAction(index);
+    }
+}
+
+function showBuy(index) {
+    buyItemName = currentState.shop_items[index];
+    const price = currentState.shop_prices[index];
+    document.getElementById("buy-title").textContent = buyItemName;
+    document.getElementById("buy-info").textContent = price + " gold each";
+    document.getElementById("buy-qty").value = 1;
+    document.getElementById("buy-overlay").style.display = "flex";
+}
+
+function buyConfirm() {
+    const qty = parseInt(document.getElementById("buy-qty").value) || 1;
+    if (qty < 1) return;
+    doShopBuy(buyItemName, qty);
+    hideBuy();
+}
+
+function hideBuy() {
+    document.getElementById("buy-overlay").style.display = "none";
+}
+
+loadMapData();
+fetchState();
+
+// Register the service worker so the game can be installed and played offline.
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function (err) {
+            console.warn("Service worker registration failed:", err);
+        });
+    });
+}
+</script>
+</body>
+</html>
