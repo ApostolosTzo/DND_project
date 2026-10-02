@@ -1443,10 +1443,582 @@ always going to pass.
   *WEAK to piercing x1.5*) and the monster retaliated. With a Longsword and a
   Shortsword the tray read `1d8 +5` and `half damage: 1d6 +2`
 
+## Attacks Moved Into the Dice Tray, and Damage Numbers
+
+Three follow-ups to the dice tray, all mirrored across both builds.
+
+### 1. The Attack option is gone
+
+With a Roll button next to every attack, a plain **Attack** button in the list
+was a second door to the same room — and it cost a screen of vertical space to
+carry something the tray already says better.
+
+| | Before | After |
+|---|---|---|
+| Combat options | Attack / Use Item / Flee | **Use Item / Flee** |
+| Attacks | list buttons | Roll buttons in the tray |
+
+This also removed the index juggling the previous pass introduced. With attacks
+out of the list, `Use Item` is always 0 and `Flee` is always 1, so
+`combatAction()` no longer has to resolve `OPT_USE = hasOff ? 2 : 1` at all.
+Attacks moved to their own entry point, `playerAttack(isOffhand)` /
+`player_attack(is_offhand)`, reached from a Roll button rather than a list index.
+
+The dungeon floor still shows a bare **Attack** button — that build has no tray, and
+the CLI build (`combat.py`) keeps its menu, for the same reason.
+
+### 2. The dice animation was rebuilt
+
+The first version spun a flat square and then showed a random face. Two problems:
+it did not look like a die rolling, and the final face was meaningless.
+
+**It now lands on the real result.** The order of operations changed:
+
+1. Press Roll — the dice spin in 3D (a real `rotateX`/`rotateY` tumble, not a
+   flat rotation) with flickering faces for ~660ms.
+2. The attack resolves **and the roll is read back out of the log line** that
+   produced it — `= (\d+) vs AC` for the attack total, `for (\d+) damage` for the
+   damage.
+3. The dice land on those numbers: the d20 shows the attack total, the damage
+   figure pops in beside it, and everything holds for ~620ms.
+4. Only then does the screen re-render.
+
+So the animation still never invents a number — it *reports* the one the game
+already decided. A miss lands on **MISS** in grey instead of a total.
+
+Also in the rebuild: bigger dice (46px d20, 38px damage dice), a `perspective`
+container so the tumble has depth, a gold `OFF-HAND` tag on the second row, and
+buttons that depress on press.
+
+### 3. Floating damage numbers over the monster
+
+When you land a hit, the damage appears as a red number that rises and fades over
+the monster's health bar. **On a miss nothing appears at all** — no number, no
+zero, no ghost — so the number on screen always belongs to the roll that
+actually happened, and it is gone by the next exchange.
+
+A hit against a weakness flashes the number **gold**, tying the popup to the
+`WEAK to ...` line in the log.
+
+This needed a small addition to the game state, because the UI had no honest way
+to know the damage number. `gs.last_damage` is set to `{amount, kind, weak}` on a
+hit and `null` on a miss, rides along on every response as `last_damage`, and is
+cleared as soon as the UI consumes it — otherwise re-rendering the same state
+would replay the popup.
+
+### A crash the route change exposed
+
+`playerAttack()` bailed out with `return combat_state()` when there was no live
+enemy — which is exactly what happens if a Roll button is pressed after the
+fight ends. `combat_state()` immediately dereferences the enemy, so the Flask
+build returned **HTTP 500**. It now returns `get_state()` instead, and the guard
+checks `p` as well as `e`.
+
+This was only reachable *because* attacks moved off the option list: before, the
+option disappeared with the combat screen, so the call could not happen at all.
+
+### Files changed
+- `js/game.js` — `playerAttack()`, `combatAction()` reduced to Use Item / Flee,
+  `gs.last_damage`, `last_damage` on every response, `Game.playerAttack` exported
+- `game_server.py` — same, plus the new **`POST /attack`** route
+- `combat.py` — unchanged (the CLI keeps its menu; it has no tray)
+- `index.html` — 3D tumble, real-result landing, `parseAttackResult()`,
+  `#dmg-layer` and the floating popup
+- `templates/index.html` — the same tray and popup, wired to `/attack`
+- `sw.js` — `CACHE_VERSION` → `dnd-pwa-v8`
+
+### Verification
+- Node suite: **203 passing** — combat offering only Use Item / Flee, the Attack
+  option gone, the tray payload present, `playerAttack()` as the only attack path,
+  `last_damage` set on a hit with its `weak` flag and `null` on a miss
+- Flask suite: **106 checks passing** (up from 87), plus the three legacy suites
+  green — all three had to move from `/action` 0 to `POST /attack`
+- Browser (PWA): sampled the roll over 1.4s and watched the full lifecycle —
+  spinning faces at 204/406/609ms, then `landed` with face `12` and total
+  `-2` at 820ms, then a fresh tray at 1407ms. A forced miss landed on **MISS**
+  with a grey die, zero floating numbers and the monster's HP untouched
+- Browser (Flask): tray renders, options are Use Item / Flee, dice spin and land
+  on the real total, no console errors
+
+## Weapon Rebalance (dagrexed edits, mirrored to JS)
+
+The dagger line was buffed directly in `items.py`, then mirrored into
+`js/items.js` so the two catalogues stayed in step.
+
+| Weapon | Before | After | Effect |
+|---|---|---|---|
+| Maul | 2d10 bludgeoning | **2d6+2** bludgeoning | Average drops 11 — 9, but the floor rises from 2 to 4 and the top falls from 20 to 14. More reliable, less swing |
+| Kris Dagger | 1d4 piercing | **2d4** piercing | Average 2.5 — 5. A one-handed dagger that can actually compete |
+| Runed Dagger | 1d4 force | **2d4+2** force | Average 2.5 — 7, and it keeps DEX+2 / INT+1 |
+| Venom Dagger | 1d4 poison, DEX+1 | **2d4+5** poison, **DEX+3** | Average 2.5 — 9, plus two more DEX. The poison chance rises with the DEX bonus |
+
+### Why the dagger line specifically
+
+The buffed daggers are all finesse, light or thrown — the cheapest weapons in
+the catalogue, and they also stack in the **off-hand** for half damage. Before this,
+a dagger was a strictly worse Longsword. Now a Venom Dagger in the off-hand is a
+real second swing, and because it carries the poison element its damage-over-time
+scales off the DEX it now grants itself.
+
+### The Longsword question, settled
+
+An intermediate edit added a second `Longsword` entry further down the file with
+`["versatile"]`, which would have made it one-handed and let a Fighter start with
+a shield. **A Python dict literal silently keeps the last duplicate key**, so which
+version was live depended on line order rather than intent — exactly the
+failure mode the two-build setup warns about.
+
+That duplicate has been removed. The Longsword is **two-handed**, which is the
+original definition, and this is the trade-off that follows from it:
+
+| | Cost | Benefit |
+|---|---|---|
+| Fighter's Longsword | both hands, no shield | +1 damage per hit, no DEX |
+| Switch to a one-handed | shield in the off-hand (+2 AC, stat bonus) | no two-handed bonus, finesse/ranged instead of STR |
+
+If a shield-happy Fighter is wanted instead, the clean fix is to change the
+*starting weapon* in `STARTING_GEAR`, not to add a duplicate `Longsword` key.
+
+### Files changed
+- `js/items.js` — Maul, Kris Dagger, Runed Dagger, Venom Dagger mirrored
+- `items.py` — the source edits (not changed here)
+
+### Verification
+- Catalogue parity: **114 vs 114, in sync** across every field
+- The new dice strings were range-checked against the browser roller so the buff
+  cannot quietly break: `2d4` 2—8, `2d4+2` 4—10, `2d4+5` 7—13, `2d6+2` 4—14, over 400 rolls each
+- **Two-handed bonus is now a rule, not a table** — the Maul reads `2d6+2` and
+  correctly gets **+1**. See "Bug the Rebalance Exposed" below
+
+## Bug the Rebalance Exposed: Two-Handed Bonus Was a Lookup
+
+Mirroring the weapon rebalance surfaced a latent bug that had been sitting in the
+bonus table the whole time.
+
+**The bug:** `two_handed_bonus()` looked the *exact* dice string up in a dict:
+
+```python
+TWO_HANDED_BONUS = {"1d8": 1, "2d6": 1, "2d10": 2, ...}
+return TWO_HANDED_BONUS.get(weapon.damage_dice, 0)   # <-- exact match
+```
+
+That works only while damage strings never change. The moment the Maul became
+`2d6+2`, the lookup missed, the `default 0` kicked in, and **the Maul silently lost
+its two-handed bonus entirely** — no error, no warning, just a weaker weapon than the
+table claimed. The parity check passed, because both builds were equally wrong.
+
+**The fix:** the bonus is now a *rule* over the parsed dice, not a table:
+
+| Dice | Bonus |
+|---|---|
+| 1 die, 4-6 sides | none |
+| 1 die, 8+ sides | **+1** |
+| 2+ dice, under 10 sides | **+1** |
+| 2+ dice, 10+ sides | **+2** |
+
+This reproduces the original table exactly (`1d8` — +1, `2d6` — +1, `2d10` — +2) and, crucially,
+**survives the next rebalance**. `2d6+2` reads as two six-sided dice and correctly
+gets +1, because the flat `+2` is already part of the damage roll.
+
+`two_handed_bonus_for(dice)` is the new entry point; `TWO_HANDED_BONUS` stays as the
+documented reference table for the player guide. Mirrored in `items.py` and
+`js/items.js`.
+
+**The lesson worth keeping:** a table used as a *rule* breaks the first time the
+data changes shape, and a parity check cannot catch it because both sides drift
+together. Six tests now cover the rule directly, including `2d6+2` and unparseable
+dice.
+
+---
+
+## Player Guide (`GAME_GUIDE.md`)
+
+A generated, player-facing reference — the document to hand someone who has never
+played.
+
+### Why generated rather than written
+
+A hand-written guide rots immediately. Any of the tables below can be made to tell
+the truth by editing one file, so the guide **cannot** disagree with the game:
+
+`py tools/gen_game_guide.py`
+
+It reads `items.py`, `shop.py`, `enemy.py`, `player.py` and `world_map.py`, then
+writes all 18 sections. Regeneration is deterministic — running it twice produces
+byte-identical output, so it is safe to run and commit every balance change.
+
+### What it covers
+
+| Section | Contents |
+|---|---|
+| Your first five minutes | the shortest path from New Game to a level-up |
+| Races / Classes | bonuses, HP curve, starting weapon and armour |
+| Stats | what each of the six does, plus the AC formula per armour type |
+| Levelling | XP curve, skill points, and the CON-heals-you-full rule |
+| Two hands | the slot rules, the half-damage off-hand swing, the bonus table |
+| Healing potions | all five tiers with unlock levels and prices |
+| **Weapons** | all 50 with dice, type, average damage, 2H bonus, element, properties, stat bonus, shop, level, price |
+| **Which weapon to buy** | gold-per-point-of-damage ranking, split into four price bands |
+| **Armour** | all 34 with AC, type, DEX cap, stat bonus, shop, level, price |
+| Armour analysis | effective AC at DEX 18, and why heavy armour is a trap early |
+| Shields | all 11 with sell values |
+| Other items / Quest materials | scrolls, the ring, and the 7 drop materials |
+| **Damage types** | all nine, with what each does |
+| **Elements** | fire / ice / poison effects, durations, scaling, and which weapons carry them |
+| **Enemies** | all 9 with HP, AC, damage, **weaknesses**, **resistances** and drops |
+| The counter chart | what to bring and what to avoid, per monster |
+| Rewards | level-1 XP and gold, and why fighting above your level pays |
+| Bosses | floor-10 only, weaknesses and resistances |
+| Combat | the dice tray, damage numbers, and what costs a turn |
+| Shops | which NPCs are in which location, level gating, selling |
+| Quests | repeatable jobs and the drop-to-NPC mapping |
+| Quick reference | a question/answer table for the most common confusions |
+
+### The analysis sections
+
+Three sections go beyond a plain listing, because *what to buy* is the question new
+players actually have:
+
+1. **Gold per point of damage**, banded by price. Computed from average damage plus
+   the two-handed bonus, sorted per band. It makes the answerable: the Longsword at
+   30g is the best level-1 buy, and the value curve flattens once you start paying
+   for stat bonuses rather than damage.
+2. **Effective AC, not printed AC.** Heavy armour ignores DEX, so the table compares
+   three armour types at DEX 18 and concludes that heavy is a downgrade until
+   roughly level 7.
+3. **The counter chart.** Nine rows of *bring this, avoid that*, derived from the
+   weakness tables, with the conclusion that poison is the closest thing to a
+   universal answer and that the Demon Lord specifically punishes fire and dark.
+
+### Verification
+- Every one of the **114 catalogue entries** appears in the guide (checked programmatically)
+- **298 table rows**, none malformed, no encoding damage
+- Regenerating twice produces byte-identical output
+- The two-handed bonus column was generated *after* the lookup-to-rule fix, so it
+  reports the real values (Maul +1, not a silent 0)
+
+## Level 200, Four Weapon Armories, and Five Elements
+
+The largest single balance pass so far, across five fronts: the unlock ladder, the
+shop structure, class weapon restrictions, the element system, and the potion
+curve. Everything below is mirrored in both builds and covered by tests.
+
+### 1. The ladder now runs to level 200
+
+Items used to unlock across levels 1-13 and then stop, with the top potion at
+level 70, while nothing in the game stopped you levelling past that. Sixteen
+unlock tiers now spread the whole range with **gaps that grow as you climb**:
+
+```
+1, 3, 6, 10, 15, 22, 30, 40, 52, 66, 82, 100, 120, 142, 166, 200
+ 2  3  4   5   7   8  10  12  14  16  18   20   22   24   34   <- the gaps
+```
+
+The last weapon, the last piece of armour, the last shield and the last potion all
+unlock at 200. Early on you get something new every few levels; later each rung
+has to be earned.
+
+### 2. The shop is derived, not typed
+
+`shop.py` was a literal dict in which **the same weapon appeared five times inside
+one NPC** — the Weaponsmith alone repeated twenty-eight lines of stock five times
+over. Python silently keeps the last duplicate key, so those repeats were
+invisible dead weight: someone could edit what looked like the live entry and
+change nothing at all.
+
+Shop stock is now computed at import time from `items.py`:
+
+- Every item lands on one of the sixteen tiers.
+- Prices follow from the tier: `10 * tier_level * TIER_MULT * rel`, where `rel`
+  runs 1.0x-3.0x across the items at that rung. Level N pays 10*N gold, so a price
+  is a readable multiple of that level's income. Top items land around 15 levels
+  of income, which makes them a real purchase rather than an automatic one.
+- The **whole ladder is one edit**. Change `UNLOCK_TIERS` in `shop.py` and its
+  mirror in `js/shop.js`, and every item re-levels and re-prices itself.
+
+Rounding is snapped to prices players read as deliberate (10, 50, 100, 250 steps)
+rather than as computed.
+
+### 3. Four class weapon NPCs, and who may buy what
+
+| Stall | Class | Stock |
+|---|---|---|
+| **Weaponsmith** | Fighter | 16 blades, axes and polearms + the universal kit |
+| **Shadow Fence** | Rogue | 10 finesse weapons and thrown daggers + the universal kit |
+| **Wizard** | Wizard | 7 staves and elemental wands + the universal kit |
+| **Temple** | Cleric | 5 maces, flails and divine tools + the universal kit |
+
+The old `Archer` stall is gone: its stock is ranged kit, which is now **universal**
+and therefore present in all four.
+
+**Every class can visit every stall.** The class decides what is *greyed out*, not
+whether the door is open. A Fighter in the Wizard's stall sees the staves listed
+but disabled, with a "not your class's weapon" note; the item still opens so the
+stats can be compared, there is no Buy button, and `POST /shop_buy` refuses the
+purchase server-side rather than trusting the UI.
+
+**Bows, darts, crossbows and the plain Wand are tagged `ALL_CLASSES`.** That is
+what makes "a Fighter can use a wand or a bow" true without a special case " the
+universal kit is never greyed out, only someone else's signature weapons are.
+`Runed Dagger` is the one weapon two classes share, and appears in both the
+Shadow Fence and the Wizard stall.
+
+Each class's **starting weapon is pinned to tier 0**. The Fighter's Longsword was
+landing on tier 6 under a pure power ranking, which would have handed every new
+Fighter a weapon they could not rebuy at level 1.
+
+`WEAPON_CLASSES` in `items.py` classifies all 50 weapons. Verified: no weapon is
+unclassified, and every class weapon is sold by its own armory.
+
+### 4. Five elements, and four of them have to roll
+
+Previously fire always ignited, ice always froze, and only poison had an
+application chance. Now every rider except dark is **rolled**, so the stat you
+have decides how often it lands:
+
+| Element | Chance | Scales on | Duration | Damage |
+|---|---|---|---|---|
+| Fire | 20% + 3% per INT, cap 60% | INT | 2 rounds | `1d4` + INT mod |
+| Ice | 10% + 1% per **5** INT, cap 43% | INT | 1 round, 2 at INT 15+ | none |
+| Poison | 20% + 3% per DEX, cap 60% | DEX | **until it dies** | DEX mod |
+| Lightning | 15% + 1% per **2** WIS, cap 50% | WIS | 2 rounds | `1d8` + WIS mod |
+| Dark | **no roll " always** | STR | 3 rounds | `1d4` + 1 per 15 STR |
+
+No two elements share a scaling stat, so a build picks which element it can rely
+on. Ice is deliberately the stingiest, because freezing removes the target's
+whole turn; dark is deliberately the only guaranteed one, and it pays for that by
+being weak and STR-scaled.
+
+A failed roll reports it (`"The ice did not freeze it."`) and costs nothing. Dark
+has no such branch, because dark always applies.
+
+The status track gained `strike_*` and `drain_*`, and `status_text()` now reports
+`Struck (n)` and `Draining (n)` alongside the existing three.
+
+### 5. Potions spread across 200, and their heals scaled with them
+
+Gates moved from 1/5/15/35/70 to **1/25/60/120/200**. The heal amounts had to move
+too: maximum HP grows about 2-4 per level, so a fixed 20 HP potion that was a third
+of a level-5 character is a rounding error at level 60. Each tier is now tuned to
+about **55% of the max HP of an average class** at the level it unlocks, which
+lands at 44-50% for a Fighter and 88-93% for a Wizard — so a big potion is always
+worth drinking, never just overhealed into the floor.
+
+| Potion | Was | Now | Unlocks at |
+|---|---|---|---|
+| Healing | 9 | **10** | 1 |
+| Greater | 20 | **55** | 5 —25 |
+| Superior | 100 | **120** | 15 —60 |
+| Grand | 300 | **220** | 35 —120 |
+| Ultimate | 800 | **360** | 70 —200 |
+
+Grand and Ultimate heal *less* than before in absolute terms. That is correct: the
+character is 3-5x bigger at the level that tier is now bought at, and the old
+numbers were only ever balanced against a level-70 bar.
+
+### Bugs this pass uncovered
+
+**1. Python rounds halves to even, JavaScript rounds them up.**
+
+`round(12.5)` is 12 in Python; `Math.round(12.5)` is 13. Both `_spread()` and
+`_round_price()` in `shop.py` divide, so a half-way tier landed on a different rung
+in the two builds and a half-way price came out 10g apart. Fifteen of sixteen
+NPCs were fine and one item was in the wrong tier in the browser.
+
+Fixed with an explicit `_round_half_up()` and a comment explaining why it exists.
+The parity check now compares stock **order** as well as contents, because a
+one-tier shift shows up as a reordering.
+
+**2. A dict built in two passes silently pins extras to the top.**
+
+`_stock_items()` wrote `EXTRA_STOCK` first and then `update()`d the rest, so the
+Arcane Ring came out at the top of the Wizard's list regardless of its level gate.
+One pass in list order instead.
+
+**3. Inflated `max_hp` does not survive a level-up.**
+
+Both suites fought their way out of combat by setting `max_hp = 900` once. A level-up
+inside that loop calls `recalc_hp()`, which recomputes `max_hp` from the class
+formula and snapped it back to ~17 — leaving the character one retaliation from a
+GAME OVER that stranded every later assertion. Both helpers now heal each
+iteration, and the Flask one gives the character a level with genuine HP instead
+of a fake number. This was pre-existing flake, not a regression; it simply became
+visible.
+
+### Guide
+
+`GAME_GUIDE.md` now has a **generated table of contents** at the top " a numbered,
+linked, one-line-blurb list of all 20 sections, derived from the headings
+themselves so it cannot fall out of step. New sections: *Progression to level 200*
+(the ladder, the price formula, worked examples) and *Weapon armories* (which class
+can wield what, the four stalls, a per-class level-by-level ladder).
+
+The weapon table gained a **Class** column, the damage-type table now says which
+types roll, and the Elements section was rewritten around the chance-and-scaling
+model rather than the old "always applies" one. Regeneration is still
+byte-for-byte deterministic.
+
+### Verification
+
+- **320 JS checks** passing, up from 233
+- **209 Flask checks** passing, up from 111, plus all three legacy suites green
+- Parity in sync across catalogue, class tags, element mapping, unlock tiers, NPC
+  classes and **stock display order**
+- `GAME_GUIDE.md` regenerates byte-identically; 846 lines, 386 table rows, none
+  malformed, all 114 catalogue entries present, every TOC anchor resolves
+- Three consecutive clean runs of each suite
+
+---
+
+
+## Remaking `GAME_GUIDE.md`: The Prose Was Lying
+
+The guide is generated, and it had drifted anyway — because only the *tables* were
+generated. The sentences were typed by hand, and nothing checked them.
+
+`tools/audit_guide.py` now exists purely to catch that, and on its first run it found
+**16 factual errors**. The important ones:
+
+### The counter chart had eight fabricated claims
+
+This is the worst of it, because it is the table a player actually uses to decide what
+to equip. It was hand-written by pattern-matching from memory instead of derived:
+
+| Claim in the old chart | What the code says |
+|---|---|
+| Skeleton "bring ... fire" | Skeletons **resist fire** |
+| Zombie "bring ... poison" | not a weakness |
+| Zombie "avoid ... ice" | not resisted |
+| Skeleton "avoid ... ice" | not resisted |
+| Wolf "avoid ... ice" | not resisted |
+| Demon Lord "bring ... poison" | not a weakness |
+| Elder Dragon "bring ... bludgeoning" | not a weakness |
+| Elder Dragon "avoid ... ice" | not resisted |
+
+Telling a player to bring fire against a Skeleton is actively harmful advice — it is
+the one thing in the game that halves the damage.
+
+**Fixed by deriving it.** The chart is now built from `VULNERABILITIES`, sorted so the
+most broadly useful weakness comes first, with the practical notes ("piercing is a
+weakness on 5 of 9 monsters", "slashing is resisted by 4") computed rather than
+asserted.
+
+The weapon column took three attempts, each of which was wrong in a different way:
+
+| Rule | What it recommended | Why it was wrong |
+|---|---|---|
+| cheapest | a 1d4 Dagger for everything, at every level | cheapest "qualifies" but does no damage |
+| gold per damage point | the same Dagger, at every level | prices rise steeply, so the ratio always picks the cheapest tier |
+| hardest hitter | a L166 Lucerne Hammer for every piercing weakness, at every level | useless advice at level 3 |
+
+The rule that works is **"strongest weapon of that type available in the early game"**,
+with the unlock level shown, and an honest *"nothing cheaper exists yet"* note when a
+damage type has no early option. That last case is real — **ice and poison have
+no buyable weapon before the endgame** — and the guide now says so instead of
+quietly implying otherwise.
+
+### The race table was reporting +1 for everything
+
+```python
+", ".join("%s+1" % k for k in sorted(RACES[r]["bonuses"]))   # hardcoded
+```
+
+| Race | Guide said | Actually |
+|---|---|---|
+| Dwarf | CON+1, STR+1 | **CON+3, STR+2** |
+| Elf | DEX+1, INT+1 | **DEX+2, INT+2** |
+| Halfling | DEX+1, CHA+1 | **DEX+2, CHA+1** |
+
+The bonus values are now read straight out of `RACES` and formatted from the actual
+numbers. A "best for" table was added so the choice is expressed in terms the new
+element system cares about.
+
+### Other fixes
+
+- **WIS said "Nothing yet"** while scaling the lightning chance. All six stat
+  descriptions rewritten against live effects.
+- **The Fighter shield note cited a Dagger as cheap early-game advice.** The Dagger is
+  Rogue stock; the Fighter armory has no one-handed weapon at any level. Replaced with
+  an honest subsection on the three actual options.
+- **The two-handed bonus table was sorted alphabetically** — `1d10, 1d12, 1d4,
+  1d6, 1d8`. Now sorted by dice and driven by the same rule the game uses, so the
+  `Maul 2d6+2 = +1` case is explained rather than surprising.
+- **`x0.5` rendered as `x0`** — `"%s"` on a float truncates. Now `%.1f`.
+
+### The value ranking was measuring the wrong thing
+
+"Gold per point of average damage" is a reasonable-sounding metric that produces
+nonsense here, because prices rise steeply with level: it rated a 3.5-average Bone Club
+above a 6.5-average Executioner's Axe as "best value".
+
+The shopping section now gives **both** metrics, honestly labelled:
+
+1. **The hardest hitter available at your level** — the one that ends fights.
+2. **The best ratio, per tier** — meaningful within a tier, and explicitly
+   labelled as not comparable down the column.
+
+That pairing also surfaced a genuine pricing oddity worth knowing: the **Greatsword
+(L142) is cheaper than the Glaive (L120) for the same average damage**.
+
+### New: a cheat sheet, and a reading order
+
+The guide opens with a **cheat sheet** — the full weakness/resistance chart, the
+five element odds, the hardest hitter per gold budget, the numbers worth memorising,
+and three mistakes that cost runs. Everything after it is reference.
+
+Sections are now emitted in **reading order** rather than the order the generator
+happens to build them, which puts the combat loop and the counter chart in the first
+handful of screens and demotes the 50-row shopping tables to the second half. The
+generator buffers each `begin(title, order)` block and sorts on write, so the source
+file still reads in a sensible order while the output is ordered for a reader.
+
+### `tools/audit_guide.py`
+
+A standing check that the guide's hand-written claims still match the code: race
+bonuses, class starting gear and HP curve, stat effects, one-handed weapon
+availability per class, potion and shop locations, drop chance, sell ratio, **every
+claim in the counter chart against `VULNERABILITIES`**, the two-handed table ordering,
+catalogue and monster coverage.
+
+Run it after any balance change:
+
+```
+py tools/gen_game_guide.py    # regenerate
+py tools/audit_guide.py       # verify the prose still matches
+```
+
+### Result
+
+| | Before | After |
+|---|---|---|
+| Lines | 846 | 1002 |
+| Sections | 20 | 21 (+ cheat sheet) |
+| Factual errors | **16** | **0** |
+| Table rows | 386 | 454 |
+| Malformed rows | 0 | 0 |
+
+Still byte-for-byte deterministic, all 114 catalogue entries present, every table of
+contents anchor and internal link resolves.
+
+---
+
+
 ## To Do
-- **Fighter starts unable to use a shield** — the starting Longsword is two-handed, so the
-  class has to switch weapons before it can hold one. Decide whether to make the
-  Longsword one-handed or give Fighter a different opener
+- **The class `bonuses` key is declared but never applied** — `CLASSES` carries
+  `bonuses: {STR: 2}` / `DEX+2` / `INT+2` / `WIS+2`, but neither `make_character()` in
+  `player.py` nor `makeCharacter()` in `js/player.js` reads it. It is inert in both
+  builds, and both files now carry a comment saying so. Wiring it up means adding
+  `CLASSES[class_name]["bonuses"]` to the stat roll in **both** character factories,
+  which is a balance change: every class would open +2 on its primary stat
+- **Fighter starts unable to use a shield** — the Longsword is deliberately
+  two-handed now that the accidental duplicate entry is gone, so the class has to
+  switch weapons before it can hold one. The clean fix is to change `STARTING_GEAR`,
+  not to add a second `Longsword` key — see "The Longsword question, settled" above
+- **Fighters are stuck one-handed until they shop** — the Weaponsmith sells no
+  one-handed weapon at all, because the whole Fighter armory is heavy blades and
+  polearms. A Fighter must reach the universal kit (Longbow at L40) or buy a Dagger
+  from the Shadow Fence before a shield is possible. If that is not intended,
+  `WEAPON_CLASSES` in `items.py` is the single place to change
 - **Check the two-handed vs one-handed math** — the +1 sits on top of 2d6, so compare a
   Greatsword against a Longsword+Dagger before settling on which is strictly better
 - **Off-hand weapons are now worth it, but only as a second swing** — half damage per
@@ -1455,8 +2027,20 @@ always going to pass.
   levels where a second swing per round actually decides fights
 - **Status effects only work on monsters** — burning, freezing and poisoning are all one-directional;
   nothing reflects back at the player yet
-- **Element scaling is uncapped** — INT and DEX have no ceiling on burn damage or poison chance,
-  so an 18 INT wizard melts everything
+- **Every element chance is now capped, but the damage per tick is not** — fire
+  adds INT modifier per round, lightning adds WIS modifier, dark adds 1 per 15 STR,
+  and none of those has a ceiling. Capping the *chance* was the requested change;
+  the *tick damage* is still unbounded and an 18 INT Wizard melts everything late
+- **The Cleric armory is only 5 weapons across 16 tiers** — Mace L1, Quarterstaff
+  L3, Bone Wand L30, Flail L100, War Hammer L200. A Cleric spends most of the game
+  with nothing new. Every other class has a weapon at least every third tier
+- **Wizard Robe has INT+9 and Dragon Scale has CON+8** — both are large enough
+  that any computed power ranking puts them at the very top, which is why armour
+  keeps its hand-tuned level order in `shop.py` rather than being derived. Worth
+  sanity-checking these two numbers against the rest of the catalogue
+- **Rapier is now sold** — it was the one weapon with no shop, and the Rogue
+  armory felt wrong without it. It lands at L22. Remove it from `WEAPON_CLASSES`
+  and the stock builder will drop it again
 - **Export / import saves** as a file (see "Saves: where they live" above) so characters can be
   backed up and moved between devices
 - Quest system (quest lines with objectives and rewards)

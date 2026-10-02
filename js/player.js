@@ -2,16 +2,21 @@
 
 const RACES = {
     "Human": { desc: "Versatile and ambitious", bonuses: { STR: 1, DEX: 1, CON: 1, INT: 1, WIS: 1, CHA: 1 } },
-    "Elf": { desc: "Graceful and perceptive", bonuses: { DEX: 2, INT: 1 } },
-    "Dwarf": { desc: "Tough and resilient", bonuses: { CON: 2, STR: 1 } },
+    "Elf": { desc: "Graceful and perceptive", bonuses: { DEX: 2, INT: 2 } },
+    "Dwarf": { desc: "Tough and resilient", bonuses: { CON: 3, STR: 2 } },
     "Halfling": { desc: "Lucky and nimble", bonuses: { DEX: 2, CHA: 1 } }
 };
 
+// NOTE: every class declares a `bonuses` key, but nothing reads it yet - not
+// makeCharacter() here and not make_character() in player.py. It is mirrored
+// from player.py verbatim so the two builds agree, and it is inert in both.
+// Wiring it up means adding CLASSES[class_name].bonuses to the stat roll in
+// both character factories.
 const CLASSES = {
-    "Fighter": { desc: "Master of martial combat", hp: 15, primary: "STR" },
-    "Rogue": { desc: "Sneaky and dextrous", hp: 13, primary: "DEX" },
-    "Wizard": { desc: "Wielder of arcane magic", hp: 11, primary: "INT" },
-    "Cleric": { desc: "Servant of the divine", hp: 13, primary: "WIS" }
+    "Fighter": { desc: "Master of martial combat", hp: 15, primary: "STR", bonuses: { STR: 2 } },
+    "Rogue": { desc: "Sneaky and dextrous", hp: 13, primary: "DEX", bonuses: { DEX: 2 } },
+    "Wizard": { desc: "Wielder of arcane magic", hp: 11, primary: "INT", bonuses: { INT: 2 } },
+    "Cleric": { desc: "Servant of the divine", hp: 13, primary: "WIS", bonuses: { WIS: 2 } }
 };
 
 const STAT_ORDER = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];

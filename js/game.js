@@ -17,7 +17,10 @@ const gs = {
     quest_accepted: {},
     quest_done: {},
     quest_npc_index: 0,
-    return_to: null
+    return_to: null,
+    // Damage dealt on the last exchange, or null for a miss. The UI draws it as
+    // a floating number over the monster's health bar, then clears it.
+    last_damage: null
 };
 
 const TOWN_OPTIONS = ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"];
@@ -80,7 +83,8 @@ function respond(screen, title, body, options, extra) {
         enemy: enemyJson(gs.enemy),
         in_dungeon: gs.dungeon_floor > 0,
         log: gs.log,
-        current_location: gs.current_location
+        current_location: gs.current_location,
+        last_damage: gs.last_damage
     };
     if (extra) {
         for (const key in extra) out[key] = extra[key];
@@ -128,6 +132,7 @@ function resetRun() {
     gs.quest_done = {};
     gs.quest_npc_index = 0;
     gs.return_to = null;
+    gs.last_damage = null;
 }
 
 function startGame(data) {
@@ -433,9 +438,9 @@ function combatState() {
     const body = e.display() + (status ? "\n" + status : "") +
         "\n\n" + p.name + ": HP " + p.hp + "/" + p.max_hp + "  AC " + p.ac;
 
-    const options = ["Attack"];
-    if (hasOffhandWeapon(p)) options.push("Off-hand Attack");
-    options.push("Use Item");
+    // Attacks are not list options any more: they live in the dice tray as
+    // Roll buttons, so this list only holds what has no dice attached.
+    const options = ["Use Item"];
     if (gs.dungeon_floor === 0) options.push("Flee");
     return respond("combat", "COMBAT", body, options, combatRollPayload());
 }
@@ -479,42 +484,42 @@ function weaponMod(p, weapon) {
     return p.modifier("STR");
 }
 
+// One player attack, from the dice tray. `isOffhand` picks the off-hand
+// swing; either way it costs the whole turn and the monster retaliates.
+function playerAttack(isOffhand) {
+    const p = gs.player;
+    const e = gs.enemy;
+    // A Roll button can be pressed with nothing to fight - no enemy yet, or the
+    // fight already ended. Bailing out to the menu rather than reaching into a
+    // null enemy.
+    if (!p || !e || !e.is_alive()) return getState();
+    if (isOffhand && !hasOffhandWeapon(p)) return combatState();
+
+    // The combat log accumulates: every exchange stays visible in the chat.
+    gs.log.push(isOffhand ? webOffhandAttack(p, e) : webPlayerAttack(p, e));
+
+    if (!e.is_alive()) return combatReward("Victory!");
+
+    // Burn and poison bite before the monster gets to swing back.
+    enemyStatusTurn(p, e).forEach((line) => gs.log.push(line));
+    if (!p.is_alive()) {
+        return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
+    }
+    if (!e.is_alive()) return combatReward("Victory!");
+
+    gs.log.push(webEnemyAttack(p, e));
+    if (!p.is_alive()) {
+        return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
+    }
+    return combatState();
+}
+
 function combatAction(choice) {
     const p = gs.player;
     const e = gs.enemy;
 
-    // The option list grows when an off-hand weapon is held, so the indices
-    // are resolved by position rather than hard-coded.
-    const hasOff = hasOffhandWeapon(p);
-    const OPT_USE = hasOff ? 2 : 1;
-    const OPT_FLEE = hasOff ? 3 : 2;
-
-    // Attack / Off-hand Attack - both cost the whole turn.
-    if (choice === 0 || (hasOff && choice === 1)) {
-        const isOffhand = hasOff && choice === 1;
-        // The combat log accumulates: every exchange stays visible in the chat.
-        gs.log.push(isOffhand ? webOffhandAttack(p, e) : webPlayerAttack(p, e));
-
-        if (!e.is_alive()) return combatReward("Victory!");
-
-        // Burn and poison bite before the monster gets to swing back.
-        enemyStatusTurn(p, e).forEach((line) => gs.log.push(line));
-        if (!p.is_alive()) {
-            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
-        }
-        if (!e.is_alive()) return combatReward("Victory!");
-
-        gs.log.push(webEnemyAttack(p, e));
-
-        if (!p.is_alive()) {
-            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
-        }
-
-        return combatState();
-    }
-
     // Use Item
-    if (choice === OPT_USE) {
+    if (choice === 0) {
         const items = combatItemList(p);
         if (!items.length) {
             gs.log = ["You have nothing to use!"];
@@ -528,7 +533,7 @@ function combatAction(choice) {
     }
 
     // Flee (not allowed in the dungeon)
-    if (choice === OPT_FLEE) {
+    if (choice === 1) {
         if (gs.dungeon_floor > 0) {
             gs.log = ["You cannot flee from the dungeon!"];
             return combatState();
@@ -548,6 +553,7 @@ function combatAction(choice) {
 
     return combatState();
 }
+
 
 // Everything the player could reach for mid-fight, best healing potion first.
 // Quest materials and other drops used to be hidden here, which made the list
@@ -668,6 +674,11 @@ function webPlayerAttack(p, e) {
         const result = e.apply_damage(dmg, type);
         const element = elementOf(p.weapon);
         const effect = e.inflict_element(element, p);
+        gs.last_damage = {
+            amount: result.total,
+            kind: "hit",
+            weak: result.note.indexOf("WEAK") !== -1
+        };
 
         let line = "You hit the " + e.name + " for " + result.total + " damage!" +
             result.note + " (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
@@ -675,6 +686,7 @@ function webPlayerAttack(p, e) {
         if (effect) line += effect;
         return line;
     }
+    gs.last_damage = null;   // a miss shows no floating number
     return "You missed! (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
 }
 
@@ -694,6 +706,11 @@ function webOffhandAttack(p, e) {
         const type = damageType(w.damage_type);
         const result = e.apply_damage(dmg, type);
         const effect = e.inflict_element(elementOf(w), p);
+        gs.last_damage = {
+            amount: result.total,
+            kind: "hit",
+            weak: result.note.indexOf("WEAK") !== -1
+        };
 
         let line = "Off-hand " + w.name + " hits the " + e.name + " for " +
             result.total + " damage!" + result.note +
@@ -702,6 +719,7 @@ function webOffhandAttack(p, e) {
         if (effect) line += effect;
         return line;
     }
+    gs.last_damage = null;   // a miss shows no floating number
     return "Off-hand " + w.name + " missed! (d20 + " + prof + " + " + mod +
         " = " + atk + " vs AC " + e.ac + ")";
 }
@@ -879,8 +897,18 @@ function shopBuy(item, qty) {
     // Guard: a shop can list an item that js/items.js does not define (the two
     // catalogues can drift). Without this, createItem() returns null, null lands
     // in the inventory and the next inventory/shop render throws.
-    if (!getItem(item)) {
+    const bought = getItem(item);
+    if (!bought) {
         gs.log = ["That item is not available."];
+        return showShop(gs.shop_name);
+    }
+
+    // The UI already greys another class's weapons out, but this is the guard
+    // that matters: without it the flag is decoration and shopBuy will happily
+    // sell a Fighter a Frost Staff.
+    if (!usableBy(bought, p.class_name)) {
+        gs.log = [item + " is a " + (shop.class || "other") + " weapon - "
+            + NOT_YOUR_WEAPON + "."];
         return showShop(gs.shop_name);
     }
 
@@ -935,6 +963,23 @@ function sellItem(name) {
     return back();
 }
 
+// Shown next to a greyed-out item when the stall belongs to another class.
+const NOT_YOUR_WEAPON = "not your class's weapon";
+
+// Which of the listed items this character is allowed to buy.
+//
+// Every armory stocks its own gear plus the universal ranged kit, so a Fighter
+// walking into the Wizard's stall sees the Wizard's staves greyed out while the
+// bows and the plain Wand stay buyable. The UI renders these as disabled rows
+// with NOT_YOUR_WEAPON; shopBuy re-checks so the flag is a display convenience
+// and never the only guard.
+function shopClassFlags(p, available) {
+    return Object.keys(available).map((n) => {
+        const item = getItem(n);
+        return item === null || usableBy(item, p.class_name);
+    });
+}
+
 function showShop(shop_name) {
     const p = gs.player;
     const shop = SHOP_NPCS[shop_name];
@@ -944,12 +989,16 @@ function showShop(shop_name) {
     });
     const names = Object.keys(available);
     const items_list = names.map((n) => n + " (" + available[n].price + "g)");
-    return respond("shop", shop_name, "", items_list.concat(["(Back)"]), {
-        shop_items: names,
-        shop_prices: names.map((n) => available[n].price),
-        // Only potions get the quantity stepper; everything else is one tap.
-        shop_potions: names.map((n) => isPotion(n))
-    });
+    return respond("shop", shop_name, NPC_NOTE[shop_name] || "",
+        items_list.concat(["(Back)"]), {
+            shop_items: names,
+            shop_prices: names.map((n) => available[n].price),
+            // Only potions get the quantity stepper; everything else is one tap.
+            shop_potions: names.map((n) => isPotion(n)),
+            // False = greyed out, this class cannot wield it.
+            shop_usable: shopClassFlags(p, available),
+            shop_npc_class: NPC_CLASS[shop_name] === undefined ? null : NPC_CLASS[shop_name]
+        });
 }
 
 // -----------------------------
@@ -1234,6 +1283,9 @@ function dungeonMerchant() {
         shop_items: Object.keys(available),
         shop_prices: Object.keys(available).map((n) => available[n].price),
         shop_potions: Object.keys(available).map((n) => isPotion(n)),
+        // The dungeon merchant only sells potions, so nothing is ever gated -
+        // but send the flags anyway so every shop screen reads the same shape.
+        shop_usable: Object.keys(available).map(() => true),
         dungeon_shop: true
     });
 }
@@ -1252,6 +1304,8 @@ const Game = {
     sellPrice: sellPrice,
     mapData: mapData,
     travel: travel,
+    // Called by the dice tray's Roll buttons, not the option list.
+    playerAttack: playerAttack,
     // Called from the inventory detail panel, never from the option list.
     inventoryEquip: inventoryEquip,
     inventoryUse: inventoryUse,

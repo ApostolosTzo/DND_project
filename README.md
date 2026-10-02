@@ -2,6 +2,8 @@
 
 A browser-based Dungeons & Dragons-style RPG. Features a world map, dungeon crawling, turn-based combat, character progression with a flexible skill point system, and NPC shops.
 
+**New to the game? Start with [`GAME_GUIDE.md`](GAME_GUIDE.md)** — it covers every race, class, stat, weapon, armour, shield and monster, including what each one is weak and resistant to.
+
 It runs two ways: as a **Flask web app** (Python backend) or as a **static Progressive Web App** that installs to your phone/desktop and plays fully offline. That means the same game exists twice in this repo — once in Python, once in JavaScript. [Why both exist](#why-there-are-two-builds) explains where that came from and what it means for you.
 
 ## Why there are two builds
@@ -88,29 +90,33 @@ Because of this, every change is checked with a **parity script** that compares 
 - **Selling** — sell any item to any NPC for 20% under the shop price; the game warns you before you sell your last weapon or armour
 - **Repeatable quests** — three randomly-named quest givers in Town trade gold and XP for monster materials
 - **Monster drops** — 7 materials dropped by the creatures that carry them (used for quests)
-- **Turn-based combat** — attack, use items, or flee against level-scaled enemies (no fleeing in dungeon)
+- **Turn-based combat** — attack with the dice tray, use items, or flee against level-scaled enemies (no fleeing in dungeon)
 - **Off-hand attacks** — a weapon in the off-hand adds a second attack option each turn at half damage. It costs you the main-hand swing and the monster still retaliates, so it is a real choice. A shield is not a weapon and grants no extra swing
-- **Dice tray** — on your turn the dice for each available attack are shown with a **Roll** button. You can see the die, the weapon and the exact modifier before spending the turn
+- **Dice tray** — on your turn the dice for each available attack are shown with a **Roll** button. You can see the die, the weapon and the exact modifier before spending the turn. Pressing it spins the dice, lands them on the real result, then resolves the attack — attacks are not in the option list at all
+- **Floating damage numbers** — a hit shows the damage rising over the monster's health bar, in gold when it exploited a weakness. A miss shows nothing
 - **Running combat log** — every exchange stays in the chat, so you can read back through a whole fight
 - **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
 - **Monster portraits** — original hand-drawn SVG for all 9 monsters; they lurch when hit and distort as they lose HP
 - **Skill point leveling** — 1 skill point per level, 5 points on levels 4/8/12/…, freely distribute across all 6 stats
-- **Stat effects** — STR (melee damage), DEX (ranged/finesse damage, AC, poison chance), CON (max HP), INT (burn damage, freeze duration). WIS/CHA are still placeholders
+- **Stat effects** — STR (melee damage, dark damage), DEX (ranged/finesse damage, AC, poison chance), CON (max HP), INT (fire and ice chance), WIS (lightning chance). CHA is still a placeholder
 - **Equipment with stat bonuses** — weapons and armor can boost STR/DEX/CON/INT, affecting damage, AC, and HP
 - **AC calculation** — light (DEX), medium (DEX capped at 2), heavy (no DEX), shield (+2)
 - **Damage types matter** — slashing, bludgeoning, piercing, fire, ice, lightning, dark, force and poison. Every monster is weak to some (x1.5) and resists others (x0.5)
-- **Two hands** — a two-handed weapon needs both, so it cannot be paired with a shield; it also hits harder (Longsword +1, Greatsword +1, Maul +2). A one-handed weapon frees the off-hand for a shield or a second weapon
-- **Elemental weapons** — fire sets the target alight for 2 rounds (INT scales), ice freezes it solid so it loses its turn (INT scales the duration), poison has a DEX-scaled chance to land and ticks until the monster dies
-- **NPC shops** — 6 NPCs: Potion Merchant, Weaponsmith, Armorer, Shield Smith, Archer, Wizard; availability varies by location. Tap an item to expand an inline panel showing what it gives you (damage, properties, stat bonuses, AC change) with a one-tap **Buy** button. Potions add a quantity stepper (1/5/10/20/Max)
+- **Two hands** — a two-handed weapon needs both, so it cannot be paired with a shield; it also hits harder, based on its dice: one die of 8+ sides is +1, two or more dice is +1, or +2 at 10+ sides. A one-handed weapon frees the off-hand for a shield or a second weapon
+- **Five elemental riders** — **fire** burns for 2 rounds (20% + 3% per INT, cap 60%), **ice** freezes the target so it loses its whole turn (10% + 1% per 5 INT, cap 43%), **poison** ticks until the monster dies (20% + 3% per DEX, cap 60%), **lightning** strikes for 2 rounds (15% + 1% per 2 WIS, cap 50%), and **dark** always drains for 3 rounds (1d4 + 1 per 15 STR, no roll). No two elements share a scaling stat, so your build decides which one you can rely on
+- **NPC shops** — 7 NPCs: Potion Merchant, Armorer, Shield Smith, and **one weapon stall per class** (Weaponsmith = Fighter, Shadow Fence = Rogue, Wizard = Wizard, Temple = Cleric). Availability varies by location. Tap an item to expand an inline panel showing what it gives you (damage, properties, stat bonuses, AC change) with a one-tap **Buy** button. Potions add a quantity stepper (1/5/10/20/Max)
 - **A Shield Smith** — all 11 shields are sold by one dedicated NPC and nowhere else
+- **Class weapon armories** — every class can walk into every weapon stall; another class's stock is listed but greyed out with a *"not your class's weapon"* note, and the server refuses the purchase. Bows, darts, crossbows and the plain Wand are **universal**, so a Fighter can still buy a wand or a bow from the Wizard's stall
 - **Interactive world map** — an illustrated map with forests, mountains, a river and curved roads; clickable nodes to travel between Town, Village 1, Village 2, and Dungeon. It gets out of the way while you fight
 - **Mobile-friendly UI** — single-column layout, big tap targets and safe-area padding on phones
 - **114 items** — 50 weapons, 49 armors/shields, 5 potion tiers, scrolls, magical items and quest materials
+- **Level 1 to 200** — every item sits on one of **16 unlock tiers** spread across the whole range with growing gaps (1, 3, 6, 10, 15, 22, 30, 40, 52, 66, 82, 100, 120, 142, 166, 200). The last weapon, armour, shield and potion all unlock at 200
+- **Derived prices** — shop stock and prices are **computed from the tier**, not typed in by hand: `10 * tier_level * TIER_MULT * rel`, where `rel` spreads each rung from 1.0x (budget) to 3.0x (flagship). Moving the whole ladder is a one-line edit
 - **10-floor dungeon** — progressive enemy scaling, potion merchant on floor 5, boss fight on floor 10
 - **Boss encounters** — Demon Lord and Elder Dragon only appear on dungeon floor 10
 - **Multi-save system** — save/load with overwrite confirmation; JSON files in the Flask build, `localStorage` in the PWA
 - **Combat item list** — every item you carry is listed during a fight, strongest healing potion first and quest drops included; unusable ones are greyed out
-- **Five potion tiers** — 9 / 20 / 100 / 300 / 800 HP, the last three unlocking at levels 15, 35 and 70
+- **Five potion tiers** — 10 / 55 / 120 / 220 / 360 HP, unlocking at levels 1, 25, 60, 120 and 200. Each tier heals roughly 55% of an average character's maximum HP at the level it unlocks, so a big potion is always worth drinking
 - **Inventory panels** — tapping an item shows its stats and an Equip or Use button instead of using it on the spot
 - **Top-left back button** — every screen's Back/Close lives in the corner rather than at the bottom of the list
 
@@ -229,7 +235,7 @@ icons/icon-maskable-512.png   # 512x512, art inside the middle 80% circle
 icons/apple-touch-icon.png   # 180x180
 ```
 
-After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v7`) so returning visitors pick up the new icons.
+After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v8`) so returning visitors pick up the new icons.
 
 > The cached files include everything under `js/`, and those are served **cache-first**. Bump `CACHE_VERSION` whenever you change `js/*.js` — otherwise players keep running the old game code even though the HTML updates.
 
@@ -504,6 +510,10 @@ DND_project/
 ├── inventory.py         # Inventory management (terminal, unused)
 ├── combat.py            # Combat (terminal, unused)
 ├── ui.py                # Terminal UI utilities (kept for imports)
+├── GAME_GUIDE.md         # Player guide: cheat sheet, counters, every item
+├── tools/
+│   ├── gen_game_guide.py  # Regenerates GAME_GUIDE.md from the catalogue
+│   └── audit_guide.py    # Checks the guide's hand-written claims vs the catalogue
 ├── PROGRESS.md          # Development changelog and analysis
 ├── templates/
 │   └── index.html       # Browser UI for the Flask build
@@ -528,6 +538,21 @@ honest:
 | `templates/index.html` and the root `index.html` both contain the map renderer | The renderer is self-contained (its CSS sits in an SVG `<style>` block) so the block can be copied between them verbatim — keep them in step |
 
 `PROGRESS.md` is the running changelog: what changed, why, the bug chains, and post-mortems.
+
+`GAME_GUIDE.md` is the **player-facing** reference and is **generated**, not written by
+hand — `py tools/gen_game_guide.py` reads the catalogue and rewrites every table. Change a
+weapon, a price, a monster or a weakness and re-run it, otherwise the guide will
+quietly disagree with the game. It opens with a one-screen **cheat sheet** (counters,
+element odds, best buy per gold budget) and is ordered for someone reading it from
+the start: the combat loop and the counter chart come before the 50-row shopping
+tables.
+
+**The prose drifts, the tables do not.** Every table is generated, but the sentences
+are typed by hand, so they can quietly go stale — which is exactly how the race table
+came to report the Dwarf's CON+3 as +1, and how the counter chart came to tell
+players to bring fire against Skeletons that *resist* fire. `py tools/audit_guide.py`
+checks the hand-written claims against the live catalogue and fails loudly on any
+that no longer match. Run it after any balance change, alongside the generator.
 
 ## Planned Features
 

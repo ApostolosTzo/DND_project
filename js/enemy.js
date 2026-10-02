@@ -36,17 +36,64 @@ const RESIST_MULTIPLIER = 0.5;
 // -----------------------------
 // Status effects
 // -----------------------------
-// Burn and freeze are short and driven by INT; poison sticks until it kills.
+// ---- Element effects ------------------------------------------------------------
+// Five damage types inflict a lasting effect, and every one of them is *rolled
+// for* except dark. That is deliberate: a weapon should be a good investment,
+// not a guaranteed effect, so the stat that matters to you decides how often the
+// rider actually lands.
+//
+// Each effect names the stat it scales on, and no two of them share a stat - INT
+// drives fire and ice, DEX drives poison, WIS drives lightning and STR drives
+// dark. That means your build picks which element you can rely on.
+//
+//   fire      roll to ignite     20% + 3% per INT, capped at 60%
+//   ice       roll to freeze     10% + 1% per 5 INT, capped at 43%
+//   poison    roll to poison     20% + 3% per DEX, capped at 60%
+//   lightning roll to strike     15% + 1% per 2 WIS, capped at 50%
+//   dark      always applies     no chance, but scales on STR instead
+//
+// Ice is the stingiest on purpose: freezing removes the target's entire turn,
+// so a 43% cap keeps it strong rather than overpowered, and +1% per *5* INT
+// means only a dedicated caster closes the gap.
+
+// --- Fire: catches, then burns for two rounds
 const BURN_ROUNDS = 2;
 const BURN_DIE = "1d4";
-const FREEZE_INT_THRESHOLD = 15;   // at or above this INT, a freeze lasts 2 rounds
+const BURN_BASE_CHANCE = 0.20;
+const BURN_CHANCE_PER_INT = 0.03;
+const BURN_MAX_CHANCE = 0.60;
+
+// --- Ice: no damage at all, but the target loses its whole turn
+const FREEZE_BASE_CHANCE = 0.10;
+const FREEZE_INT_PER_POINT = 5;       // one extra point of chance per this much INT
+const FREEZE_CHANCE_PER_INT_BLOCK = 0.01;
+const FREEZE_MAX_CHANCE = 0.43;
+const FREEZE_INT_THRESHOLD = 15;      // at or above this INT, a freeze lasts 2 rounds
 const FREEZE_MIN_ROUNDS = 1;
 const FREEZE_MAX_ROUNDS = 2;
-const POISON_BASE_CHANCE = 0.20;   // +3% per point of DEX
+
+// --- Poison: the mirror of fire, but on DEX, and it never wears off
+const POISON_BASE_CHANCE = 0.20;
 const POISON_CHANCE_PER_DEX = 0.03;
 const POISON_MAX_CHANCE = 0.60;
 // Poison is never "wearing off" - it runs until the creature is dead.
 const POISON_MAX_ROUNDS = 999;
+
+// --- Lightning: the WIS effect, and the hardest-hitting of the short riders
+const LIGHTNING_ROUNDS = 2;
+const LIGHTNING_DIE = "1d8";
+const LIGHTNING_BASE_CHANCE = 0.15;
+const LIGHTNING_WIS_PER_POINT = 2;    // one extra point of chance per this much WIS
+const LIGHTNING_CHANCE_PER_WIS_BLOCK = 0.01;
+const LIGHTNING_MAX_CHANCE = 0.50;
+
+// --- Dark: the odd one out. No roll at all, and it scales on STR.
+// 1d4 + 1 for every 15 points of STR, so it starts at a flat 1d4 on a 10 STR
+// character and only reaches 1d4+2 at STR 30.
+const DARK_ROUNDS = 3;
+const DARK_DIE = "1d4";
+const DARK_STR_PER_POINT = 15;        // one extra point of damage per this much STR
+const DARK_DAMAGE_PER_STR_BLOCK = 1;
 
 // Rewards are multiplied by these before being rounded to whole numbers.
 const XP_REWARD_MULTIPLIER = 1.4;   // +40% XP
@@ -98,7 +145,11 @@ Enemy.prototype.clear_status = function () {
         burn_damage: 0,
         freeze_rounds: 0,
         poison_rounds: 0,
-        poison_damage: 0
+        poison_damage: 0,
+        strike_rounds: 0,
+        strike_damage: 0,
+        drain_rounds: 0,
+        drain_damage: 0
     };
 };
 
@@ -108,6 +159,8 @@ Enemy.prototype.status_text = function () {
     const parts = [];
     if (s.freeze_rounds > 0) parts.push("Frozen (" + s.freeze_rounds + ")");
     if (s.burn_rounds > 0) parts.push("Burning (" + s.burn_rounds + ")");
+    if (s.strike_rounds > 0) parts.push("Struck (" + s.strike_rounds + ")");
+    if (s.drain_rounds > 0) parts.push("Draining (" + s.drain_rounds + ")");
     if (s.poison_rounds > 0) parts.push("Poisoned");
     return parts.join(", ");
 };
@@ -138,28 +191,35 @@ Enemy.prototype.apply_damage = function (amount, type) {
 };
 
 // Applies the element carried by a weapon that just landed a hit. `p` is the
-// attacker, because fire/ice scale with INT and poison scales with DEX.
+// attacker, because every element scales off one of the attacker's stats.
+// Each element has its own chance roll; a failed roll costs nothing.
 Enemy.prototype.inflict_element = function (element, p) {
     if (!element || !p) return "";
     const s = this.status;
+    const stats = p.effective_stats();
 
     if (element === "fire") {
+        const chance = Math.min(BURN_MAX_CHANCE,
+            BURN_BASE_CHANCE + BURN_CHANCE_PER_INT * stats.INT);
+        if (Math.random() >= chance) return " The fire did not catch.";
         s.burn_rounds = BURN_ROUNDS;
-        // INT feeds both how long it burns and how hard each tick bites.
-        const int_mod = Math.floor((p.effective_stats().INT - 10) / 2);
+        const int_mod = Math.floor((stats.INT - 10) / 2);
         s.burn_damage = Math.max(1, roll(BURN_DIE) + Math.max(0, int_mod));
         return " It catches fire (" + s.burn_damage + "/round for " + BURN_ROUNDS + " rounds)!";
     }
 
     if (element === "ice") {
-        const stats = p.effective_stats();
+        const chance = Math.min(FREEZE_MAX_CHANCE,
+            FREEZE_BASE_CHANCE
+            + FREEZE_CHANCE_PER_INT_BLOCK * Math.floor(stats.INT / FREEZE_INT_PER_POINT));
+        if (Math.random() >= chance) return " The ice did not freeze it.";
         const rounds = stats.INT >= FREEZE_INT_THRESHOLD ? FREEZE_MAX_ROUNDS : FREEZE_MIN_ROUNDS;
         s.freeze_rounds = Math.max(s.freeze_rounds, rounds);
         return " It is frozen for " + rounds + " round" + (rounds > 1 ? "s" : "") + "!";
     }
 
     if (element === "poison") {
-        const dex = p.effective_stats().DEX;
+        const dex = stats.DEX;
         const chance = Math.min(POISON_MAX_CHANCE,
             POISON_BASE_CHANCE + POISON_CHANCE_PER_DEX * dex);
         if (Math.random() >= chance) return " The poison did not take.";
@@ -167,6 +227,28 @@ Enemy.prototype.inflict_element = function (element, p) {
         s.poison_rounds = POISON_MAX_ROUNDS;
         s.poison_damage = Math.max(1, dex_mod);
         return " It is poisoned (" + s.poison_damage + "/round until it dies)!";
+    }
+
+    if (element === "lightning") {
+        const chance = Math.min(LIGHTNING_MAX_CHANCE,
+            LIGHTNING_BASE_CHANCE
+            + LIGHTNING_CHANCE_PER_WIS_BLOCK * Math.floor(stats.WIS / LIGHTNING_WIS_PER_POINT));
+        if (Math.random() >= chance) return " The lightning misses.";
+        s.strike_rounds = LIGHTNING_ROUNDS;
+        const wis_mod = Math.floor((stats.WIS - 10) / 2);
+        s.strike_damage = Math.max(1, roll(LIGHTNING_DIE) + Math.max(0, wis_mod));
+        return " It is struck by lightning (" + s.strike_damage + "/round for "
+            + LIGHTNING_ROUNDS + " rounds)!";
+    }
+
+    if (element === "dark") {
+        // Dark has no chance roll on purpose - it is the one rider that is
+        // guaranteed, and it pays for that by being weak and STR-scaled.
+        s.drain_rounds = DARK_ROUNDS;
+        s.drain_damage = Math.max(1, roll(DARK_DIE)
+            + DARK_DAMAGE_PER_STR_BLOCK * Math.floor(stats.STR / DARK_STR_PER_POINT));
+        return " It is drained of life (" + s.drain_damage + "/round for "
+            + DARK_ROUNDS + " rounds)!";
     }
 
     return "";
@@ -180,6 +262,16 @@ Enemy.prototype.tick_status = function () {
         this.take_damage(s.burn_damage);
         s.burn_rounds -= 1;
         lines.push(this.name + " burns for " + s.burn_damage + " damage.");
+    }
+    if (s.strike_rounds > 0) {
+        this.take_damage(s.strike_damage);
+        s.strike_rounds -= 1;
+        lines.push(this.name + " is struck for " + s.strike_damage + " damage.");
+    }
+    if (s.drain_rounds > 0) {
+        this.take_damage(s.drain_damage);
+        s.drain_rounds -= 1;
+        lines.push(this.name + " is drained for " + s.drain_damage + " damage.");
     }
     if (s.poison_rounds > 0) {
         this.take_damage(s.poison_damage);

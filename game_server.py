@@ -1,13 +1,14 @@
 from flask import Flask, render_template, jsonify, request
 from player import Player, create_character, make_character, STAT_ORDER, CLASSES, RACES
 from items import (ITEMS, create_item, get_item, is_material, is_potion, heal_amount,
-                   is_two_handed, two_handed_bonus, damage_type, element_of)
+                   is_two_handed, two_handed_bonus, damage_type, element_of,
+    usable_by, item_classes, ALL_CLASSES)
 from enemy import generate_enemy, generate_dungeon_enemy
 from dice import roll
 from save_load import save_game, load_game, list_saves, save_exists
 from world_map import LOCATIONS
 from quests import QUESTS, roll_quest_npcs, quests_for
-from shop import SHOP_NPCS, sell_price
+from shop import SHOP_NPCS, sell_price, NPC_CLASS, NPC_NOTE
 
 app = Flask(__name__)
 
@@ -32,6 +33,9 @@ gs = {
     "quest_done": {},
     "quest_npc_index": 0,
     "return_to": None,
+    # Damage dealt on the last exchange, or None for a miss. The UI draws it
+    # as a floating number over the monster's health bar, then clears it.
+    "last_damage": None,
 }
 
 def player_json(p):
@@ -89,6 +93,7 @@ def respond(screen, title, body, options, extra=None):
         "log": gs["log"],
         # Include the current location in the response
         "current_location": gs["current_location"],
+        "last_damage": gs["last_damage"],
     }
     if extra:
         out.update(extra)
@@ -132,6 +137,7 @@ def reset_run():
     gs["quest_done"] = {}
     gs["quest_npc_index"] = 0
     gs["return_to"] = None
+    gs["last_damage"] = None
 
 @app.route("/start", methods=["POST"])
 def start_game():
@@ -332,10 +338,9 @@ def combat_state():
     header = e.display() + (f"\n{status}" if status else "")
     body = f"{header}\n\n{player_json(p)['name']}: HP {p.hp}/{p.max_hp}  AC {p.ac}"
 
-    options = ["Attack"]
-    if has_offhand_weapon(p):
-        options.append("Off-hand Attack")
-    options.append("Use Item")
+    # Attacks are not list options any more: they live in the dice tray as
+    # Roll buttons, so this list only holds what has no dice attached.
+    options = ["Use Item"]
     if gs["dungeon_floor"] == 0:
         options.append("Flee")
 
@@ -408,54 +413,57 @@ def combat_item_state():
                    {"combat_items": [e["name"] for e in entries]})
 
 
+# One player attack, from the dice tray. is_offhand picks the off-hand
+# swing; either way it costs the whole turn and the monster retaliates.
+def player_attack(is_offhand=False):
+    p = gs["player"]
+    e = gs["enemy"]
+    # A Roll button can be pressed with nothing to fight - no enemy yet, or the
+    # fight already ended. Bailing out to the menu rather than reaching into a
+    # None enemy, which used to 500.
+    if not p or not e or not e.is_alive():
+        return get_state()
+    if is_offhand and not has_offhand_weapon(p):
+        return combat_state()
+
+    # The combat log accumulates: every exchange stays visible in the chat.
+    gs["log"].append(web_offhand_attack(p, e) if is_offhand
+                      else web_player_attack(p, e))
+
+    if not e.is_alive():
+        return combat_reward("Victory!")
+
+    # Burn and poison bite before the monster gets to swing back.
+    for line in e.tick_status():
+        gs["log"].append(line)
+    if not p.is_alive():
+        gs["screen"] = "game_over"
+        return respond("game_over", "GAME OVER", "You have died...",
+                       ["Return to Menu"])
+    if not e.is_alive():
+        return combat_reward("Victory!")
+
+    gs["log"].append(web_enemy_attack(p, e))
+    if not p.is_alive():
+        gs["screen"] = "game_over"
+        return respond("game_over", "GAME OVER", "You have died...",
+                       ["Return to Menu"])
+
+    return combat_state()
+
 def combat_action(choice):
     p = gs["player"]
     e = gs["enemy"]
 
-    # The option list grows when an off-hand weapon is held, so the indices
-    # are resolved by position rather than hard-coded.
-    has_off = has_offhand_weapon(p)
-    opt_use = 2 if has_off else 1
-    opt_flee = 3 if has_off else 2
-
-    # Attack / Off-hand Attack - both cost the whole turn.
-    if choice == 0 or (has_off and choice == 1):
-        is_offhand = has_off and choice == 1
-        # The combat log accumulates: every exchange stays visible in the chat.
-        gs["log"].append(web_offhand_attack(p, e) if is_offhand
-                          else web_player_attack(p, e))
-
-        if not e.is_alive():
-            return combat_reward("Victory!")
-
-        # Burn and poison bite before the monster gets to swing back.
-        for line in e.tick_status():
-            gs["log"].append(line)
-        if not p.is_alive():
-            gs["screen"] = "game_over"
-            return respond("game_over", "GAME OVER", "You have died...",
-                           ["Return to Menu"])
-        if not e.is_alive():
-            return combat_reward("Victory!")
-
-        gs["log"].append(web_enemy_attack(p, e))
-
-        if not p.is_alive():
-            gs["screen"] = "game_over"
-            return respond("game_over", "GAME OVER", "You have died...",
-                           ["Return to Menu"])
-
-        return combat_state()
-
     # Use Item
-    elif choice == opt_use:
+    if choice == 0:
         if not combat_item_list(p):
             gs["log"].append("You have nothing to use!")
             return combat_state()
         return combat_item_state()
 
     # Flee (not allowed in dungeon)
-    elif choice == opt_flee:
+    elif choice == 1:
         if gs["dungeon_floor"] > 0:
             gs["log"].append("You cannot flee from the dungeon!")
             return combat_state()
@@ -476,6 +484,7 @@ def combat_action(choice):
             return combat_state()
 
     return combat_state()
+
 
 # Use Item
 def combat_item_action(choice):
@@ -524,13 +533,15 @@ def web_player_attack(p, e):
         type_name = damage_type(p.weapon.damage_type) if p.weapon else None
         total, note = e.apply_damage(dmg, type_name)
         effect = e.inflict_element(element_of(p.weapon), p)
+        gs["last_damage"] = {"amount": total, "kind": "hit",
+                                "weak": "WEAK" in note}
         line = (f"You hit the {e.name} for {total} damage!{note} "
                 f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac})")
         if heavy > 0:
             line += f" +{heavy} two-handed"
         return line + effect
-    else:
-        return f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
+    gs["last_damage"] = None   # a miss shows no floating number
+    return f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
 
 # Off-hand Attack
 def web_offhand_attack(p, e):
@@ -552,10 +563,13 @@ def web_offhand_attack(p, e):
         type_name = damage_type(w.damage_type)
         total, note = e.apply_damage(dmg, type_name)
         effect = e.inflict_element(element_of(w), p)
+        gs["last_damage"] = {"amount": total, "kind": "hit",
+                                "weak": "WEAK" in note}
         return (f"Off-hand {w.name} hits the {e.name} for {total} damage!{note} "
                 f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac}, half damage)"
                 + effect)
 
+    gs["last_damage"] = None   # a miss shows no floating number
     return f"Off-hand {w.name} missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
 
 # Enemy Attack
@@ -824,8 +838,17 @@ def shop_buy():
     # Guard: a shop can list an item that items.py does not define (the two
     # catalogues can drift). Without this, create_item() returns None, None lands
     # in the inventory and the next inventory/shop render raises.
-    if not get_item(item_name):
+    item = get_item(item_name)
+    if not item:
         gs["log"] = ["That item is not available."]
+        return show_shop(shop_name)
+
+    # The UI already greys another class's weapons out, but this is the guard
+    # that matters: without it the flag is decoration and /shop_buy will happily
+    # sell a Fighter a Frost Staff.
+    if not usable_by(item, p.class_name):
+        gs["log"] = [f"{item_name} is a {shop.get('class') or 'other'} weapon - "
+                     f"{NOT_YOUR_WEAPON}."]
         return show_shop(shop_name)
 
     price = shop["items"][item_name]["price"]
@@ -874,16 +897,40 @@ def sell_item():
     gs["log"] = [f"Sold {item.name} for {price}g."]
     return show_shop(gs.get("shop_name") or next(iter(SHOP_NPCS)))
 
+# Shown next to a greyed-out item when the stall belongs to another class.
+NOT_YOUR_WEAPON = "not your class's weapon"
+
+
+def shop_class_flags(p, shop, available):
+    """Which of the listed items this character is allowed to buy.
+
+    Every armory stocks its own gear plus the universal ranged kit, so a Fighter
+    walking into the Wizard's stall sees the Wizard's staves greyed out while
+    the bows and the plain Wand stay buyable. The UI renders these as disabled
+    rows with NOT_YOUR_WEAPON; shop_buy re-checks server-side so the flag is a
+    display convenience and never the only guard.
+    """
+    flags = []
+    for name in available:
+        item = get_item(name)
+        flags.append(item is None or usable_by(item, p.class_name))
+    return flags
+
+
 def show_shop(shop_name):
     p = gs["player"]
     shop = SHOP_NPCS[shop_name]
     available = {n: d for n, d in shop["items"].items() if p.level >= d["min_level"]}
     items_list = [f"{n} ({d['price']}g)" for n, d in available.items()]
-    return respond("shop", shop_name, "", items_list + ["(Back)"],
+    return respond("shop", shop_name, NPC_NOTE.get(shop_name, ""),
+                   items_list + ["(Back)"],
                    extra={"shop_items": list(available.keys()),
                           "shop_prices": [d["price"] for d in available.values()],
                           # Only potions get the quantity stepper.
-                          "shop_potions": [is_potion(n) for n in available.keys()]})
+                          "shop_potions": [is_potion(n) for n in available.keys()],
+                          # False = greyed out, this class cannot wield it.
+                          "shop_usable": shop_class_flags(p, shop, available),
+                          "shop_npc_class": NPC_CLASS.get(shop_name)})
 
 # ---- Inventory ----
 def inventory_state():
@@ -1092,6 +1139,11 @@ def _item_details():
             entry["two_handed"] = two_handed_bonus(item)
             entry["element"] = element_of(item)
             entry["properties"] = item.properties
+            # Which class may wield it, so the UI can say "not your class's
+            # weapon" without duplicating the armory table in JavaScript.
+            classes = item_classes(item)
+            entry["classes"] = classes
+            entry["any_class"] = len(classes) == len(ALL_CLASSES)
         elif item.category == "armor":
             entry["ac"] = item.base_ac
             entry["kind"] = item.armor_type
@@ -1107,6 +1159,12 @@ def _item_details():
 @app.route("/item_details")
 def item_details():
     return jsonify({"items": _item_details()})
+
+@app.route("/attack", methods=["POST"])
+def attack():
+    """One player attack, triggered by a Roll button in the dice tray."""
+    data = request.json or {}
+    return player_attack(bool(data.get("offhand")))
 
 @app.route("/map_data")
 def map_data():

@@ -112,6 +112,23 @@
         .shop-detail dt { color: #8a8a8a; font-size: 0.85em; }
         .shop-detail dd { margin: 0; color: #d6d6d6; font-size: 0.85em; }
         .shop-detail .flavour { color: #8a8a8a; font-size: 0.8em; margin: 6px 0 0; }
+/* Another class's armory. The row still opens so you can read the stats -
+   you just cannot buy it, and the panel says why instead of showing a price
+   you will never be charged. */
+.shop-item.locked { color: #5c5c64; }
+.shop-item.locked:hover { background: #1a1a1e; color: #5c5c64; }
+.shop-locked-note {
+    color: #a35a4a;
+    font-size: 0.78em;
+    padding: 0 0 4px 22px;
+    font-style: italic;
+}
+.shop-npc-note {
+    color: #9a9a9a;
+    font-size: 0.85em;
+    margin-bottom: 6px;
+    font-style: italic;
+}
         .shop-buy {
             background: #c9a84c; color: #0b0b0c; border: none; padding: 10px 22px;
             font-family: 'Courier New', monospace; font-size: 0.95em; cursor: pointer;
@@ -132,50 +149,94 @@
         .combat-item-disabled { color: #6a6a70; }
         /* ---------- Dice tray ---------- */
         #dice-tray {
-            display: none; background: #151517; border: 1px solid #2e2e33;
-            border-radius: 8px; padding: 12px; margin-bottom: 15px;
+            display: none; background: linear-gradient(180deg, #1a1a1d, #121214);
+            border: 1px solid #3a3a42; border-radius: 10px; padding: 14px;
+            margin-bottom: 15px; box-shadow: 0 4px 18px rgba(0,0,0,.45);
         }
         #dice-tray.on { display: block; }
         .dice-tray-title {
-            color: #c9a84c; font-size: 0.8em; letter-spacing: 1px;
-            text-transform: uppercase; margin-bottom: 10px;
+            color: #c9a84c; font-size: 0.75em; letter-spacing: 2px;
+            text-transform: uppercase; margin-bottom: 4px;
         }
+        .dice-tray-sub { color: #6a6a70; font-size: 0.75em; margin-bottom: 12px; }
         .dice-row {
-            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-            padding: 8px 0; border-top: 1px solid #242428;
+            display: flex; align-items: center; gap: 14px; padding: 10px;
+            border-top: 1px solid #242428;
         }
         .dice-row:first-of-type { border-top: none; }
-        .dice-group { display: flex; gap: 6px; align-items: center; }
+        .dice-row.offhand { background: rgba(201,168,76,.05); border-radius: 6px; }
+        .dice-stage { perspective: 320px; display: flex; gap: 8px; align-items: center; }
         .die {
-            width: 34px; height: 34px; border-radius: 6px; background: #f0ece0;
-            border: 1px solid #b9b2a0; display: grid; grid-template: repeat(3,1fr) / repeat(3,1fr);
-            padding: 4px; gap: 1px; box-shadow: 0 2px 0 #7a7466;
+            width: 38px; height: 38px; border-radius: 8px;
+            background: radial-gradient(circle at 32% 28%, #fffdf6, #ddd6c2 70%);
+            border: 1px solid #a9a08a; display: grid; grid-template: repeat(3,1fr) / repeat(3,1fr);
+            padding: 5px; gap: 1px; box-shadow: 0 3px 0 #8b8270, 0 5px 10px rgba(0,0,0,.5);
         }
-        .die.d20 {
-            border-radius: 50%; width: 38px; height: 38px; display: grid;
-            place-items: center; color: #1a1a1c; font-size: 13px; font-weight: bold;
-            font-family: 'Courier New', monospace;
+        .die .pip {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 30%, #4a4a52, #101013);
         }
-        .die .pip { width: 5px; height: 5px; border-radius: 50%; background: #1a1a1c; }
         .die .pip.off { background: transparent; }
-        .die.rolling { animation: die-tumble .5s ease-in-out; }
-        @keyframes die-tumble {
-            0%   { transform: rotate(0deg) scale(1); }
-            25%  { transform: rotate(-140deg) scale(1.25); }
-            50%  { transform: rotate(110deg) scale(.9); }
-            75%  { transform: rotate(-50deg) scale(1.15); }
-            100% { transform: rotate(0deg) scale(1); }
+        .die.d20 {
+            width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
+            padding: 0; color: #14141a; font-size: 15px; font-weight: bold;
+            font-family: 'Courier New', monospace;
+            box-shadow: 0 3px 0 #8b8270, 0 5px 12px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,255,255,.45);
         }
-        .dice-info { flex: 1; min-width: 130px; }
-        .dice-label { color: #d6d6d6; font-size: 0.9em; }
-        .dice-label .off-tag { color: #c9a84c; font-size: 0.85em; }
-        .dice-formula { color: #8a8a8a; font-size: 0.78em; margin-top: 2px; }
+        .die.spinning { animation: die-spin .62s cubic-bezier(.3,.1,.4,1) both; }
+        @keyframes die-spin {
+            0%   { transform: rotateX(0deg) rotateY(0deg) scale(1); }
+            20%  { transform: rotateX(320deg) rotateY(280deg) scale(1.3); }
+            45%  { transform: rotateX(700deg) rotateY(540deg) scale(1.15); }
+            70%  { transform: rotateX(1010deg) rotateY(900deg) scale(.92); }
+            88%  { transform: rotateX(1480deg) rotateY(1240deg) scale(1.06); }
+            100% { transform: rotateX(1800deg) rotateY(1440deg) scale(1); }
+        }
+        .die.landed { animation: die-land .28s ease-out both; }
+        @keyframes die-land {
+            0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); }
+        }
+        .die.miss { background: radial-gradient(circle at 32% 28%, #8a8a92, #55555c 70%); color: #e8e8ee; }
+        .dmg-total {
+            min-width: 46px; text-align: center; color: #e74c3c; font-size: 1.15em;
+            font-weight: bold; opacity: 0; font-family: 'Courier New', monospace;
+        }
+        .dmg-total.show { animation: dmg-pop .45s ease-out both; }
+        @keyframes dmg-pop {
+            0% { opacity: 0; transform: scale(.6); }
+            35% { opacity: 1; transform: scale(1.25); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .dice-info { flex: 1; min-width: 140px; }
+        .dice-label { color: #d6d6d6; font-size: 0.92em; }
+        .dice-label .off-tag {
+            color: #0b0b0c; background: #c9a84c; padding: 1px 6px;
+            border-radius: 3px; font-size: 0.78em; margin-right: 5px;
+        }
+        .dice-formula { color: #7a7a82; font-size: 0.78em; margin-top: 3px; }
         .roll-btn {
-            background: #c9a84c; color: #0b0b0c; border: none; padding: 10px 26px;
-            font-family: 'Courier New', monospace; font-size: 0.95em; cursor: pointer;
-            border-radius: 4px; min-height: 44px;
+            background: linear-gradient(180deg, #dbb95c, #c9a84c); color: #0b0b0c;
+            border: none; padding: 11px 30px; font-family: 'Courier New', monospace;
+            font-size: 1em; font-weight: bold; letter-spacing: 1px; cursor: pointer;
+            border-radius: 5px; min-height: 46px; box-shadow: 0 3px 0 #8b7630;
         }
-        .roll-btn:disabled { background: #2e2e33; color: #8a8a8a; cursor: wait; }
+        .roll-btn:disabled { background: #2e2e33; color: #6a6a70; box-shadow: none; cursor: wait; }
+        /* ---------- Floating damage numbers ---------- */
+        .monster-box { position: relative; }
+        .dmg-layer { position: absolute; inset: 0; pointer-events: none; }
+        .dmg-float {
+            position: absolute; left: 60px; top: 24px; color: #ff5b4a; font-weight: bold;
+            font-size: 1.5em; text-shadow: 0 2px 4px #000, 0 0 10px rgba(255,60,40,.6);
+            font-family: 'Courier New', monospace; animation: dmg-rise 1.25s ease-out forwards;
+        }
+        .dmg-float.weak { color: #ffd633; text-shadow: 0 2px 4px #000, 0 0 12px rgba(255,214,51,.8); }
+        @keyframes dmg-rise {
+            0%   { opacity: 0; transform: translate(-50%, 6px) scale(.7); }
+            18%  { opacity: 1; transform: translate(-50%, -6px) scale(1.15); }
+            35%  { transform: translate(-50%, -10px) scale(1); }
+            75%  { opacity: 1; }
+            100% { opacity: 0; transform: translate(-50%, -46px) scale(.95); }
+        }
         #log {
             margin-top: 15px;
             padding: 10px;
@@ -601,21 +662,49 @@ function itemStatRows(name) {
     if (it.category === "weapon") {
         rows.push(["Damage", it.damage + " " + it.type]);
         if (it.two_handed > 0) rows.push(["Two-handed", "+" + it.two_handed + " damage per hit"]);
-        if (it.element === "fire") rows.push(["Element", "sets the target alight for 2 rounds (INT scales)"]);
-        else if (it.element === "ice") rows.push(["Element", "may freeze the target solid (INT scales)"]);
-        else if (it.element === "poison") rows.push(["Element", "may poison the target (DEX scales)"]);
+        const el = ELEMENT_TEXT[it.element];
+        if (el) rows.push(["Element", el]);
         if (it.properties && it.properties.length) rows.push(["Properties", it.properties.join(", ")]);
     } else if (it.category === "armor") {
         rows.push(["Armour", it.ac + " AC · " + (it.kind === "shield" ? "shield" : it.kind + " armour")]);
     } else {
         rows.push(["Effect", it.description || "-"]);
     }
+    const who = classTagText(it);
+    if (who) rows.push(["Usable by", who]);
     if (it.bonus && it.bonus.length) rows.push(["Stat bonus", it.bonus.join(", ")]);
     return rows;
 }
 
-function detailHtml(name, price) {
+// Plain-language description of each element rider, and who may wield what.
+// Both come from the server's item payload, so neither can drift from the game.
+const ELEMENT_TEXT = {
+    fire: "rolls to set the target alight, 2 rounds of 1d4 + INT (INT scales the chance)",
+    ice: "rolls to freeze the target solid and steal its turn (INT scales the chance)",
+    poison: "rolls to poison, 1 DEX per round until it dies (DEX scales the chance)",
+    lightning: "rolls to strike, 2 rounds of 1d8 + WIS (WIS scales the chance)",
+    dark: "always drains life, 3 rounds of 1d4 + 1 per 15 STR (no chance roll)"
+};
+
+function classTagText(it) {
+    if (!it || !it.classes || it.category !== "weapon") return null;
+    // any_class comes from the server, so this does not need the JS catalogue.
+    return it.any_class ? "any class" : it.classes.join(" or ");
+}
+
+function detailHtml(name, price, locked, npcClass) {
     const rows = itemStatRows(name);
+    // Another class's weapon: show what it is, but never a price, because the
+    // request would be refused anyway.
+    if (locked) {
+        return '<div class="shop-detail-info">' +
+            '<div class="shop-detail-name">' + name + "</div>" +
+            "<dl>" + rows.map((r) => "<dt>" + r[0] + "</dt><dd>" + r[1] + "</dd>").join("") + "</dl>" +
+            '<p class="flavour" style="color:#a35a4a">Not your class\'s weapon. ' +
+            "This is " + (npcClass || "another") + " stock \u2014 visit the " + npcClass +
+            "'s own stall, or buy a different weapon here.</p>" +
+            "</div>";
+    }
     return '<div class="shop-detail-info">' +
         '<div class="shop-detail-name">' + name + (price ? " — " + price + "g" : "") + "</div>" +
         "<dl>" + rows.map((r) => "<dt>" + r[0] + "</dt><dd>" + r[1] + "</dd>").join("") + "</dl>" +
@@ -638,6 +727,8 @@ function backIndexFor(s) {
 // button. The roll itself is decided by the server; the animation is theatre
 // and the authoritative number lands in the combat log right after.
 
+// Pips for the damage dice: 1-6 fit a 3x3 grid legibly, which is why a d20
+// shows its own number instead.
 const PIP_LAYOUT = {
     1: [4],
     2: [0, 8],
@@ -663,23 +754,8 @@ function dieEl(sides, value) {
 function d20El(value) {
     const el = document.createElement("div");
     el.className = "die d20";
-    el.textContent = value ? String(value) : "?";
+    el.textContent = (value === null || value === undefined) ? "?" : String(value);
     return el;
-}
-
-function diceGroup(sides) {
-    const wrap = document.createElement("div");
-    wrap.className = "dice-group";
-    if (sides === 20) {
-        wrap.appendChild(d20El(0));
-    } else {
-        for (let i = 0; i < Math.min(sides, 3); i++) wrap.appendChild(dieEl(sides, 0));
-    }
-    const tag = document.createElement("span");
-    tag.className = "dice-formula";
-    tag.textContent = "d" + sides;
-    wrap.appendChild(tag);
-    return wrap;
 }
 
 function diceParts(expr) {
@@ -708,24 +784,44 @@ function renderDiceTray(s) {
 
     const title = document.createElement("div");
     title.className = "dice-tray-title";
-    title.textContent = "Your turn" + (s.enemy ? " \u2014 vs " + s.enemy.name + " (AC " + s.enemy.ac + ")" : "");
+    title.textContent = "Your turn";
     tray.appendChild(title);
 
+    const sub = document.createElement("div");
+    sub.className = "dice-tray-sub";
+    sub.textContent = s.enemy ? "vs " + s.enemy.name + " \u00b7 AC " + s.enemy.ac + "  \u2014  roll to attack"
+                              : "roll to attack";
+    tray.appendChild(sub);
+
     attacks.forEach((atk, i) => {
+        const dp = diceParts(atk.damage_die);
         const row = document.createElement("div");
-        row.className = "dice-row";
-        row.appendChild(diceGroup(diceParts(atk.hit_die).sides));
+        row.className = "dice-row" + (atk.offhand ? " offhand" : "");
+
+        const stage = document.createElement("div");
+        stage.className = "dice-stage";
+        stage.appendChild(d20El(null));
+        for (let k = 0; k < Math.min(dp.count, 3); k++) stage.appendChild(dieEl(dp.sides, 0));
+        row.appendChild(stage);
+
+        const total = document.createElement("span");
+        total.className = "dmg-total";
+        row.appendChild(total);
 
         const info = document.createElement("div");
         info.className = "dice-info";
         const label = document.createElement("div");
         label.className = "dice-label";
-        label.textContent = (atk.offhand ? "Off-hand " : "") + atk.weapon;
+        if (atk.offhand) {
+            label.innerHTML = '<span class="off-tag">OFF-HAND</span>';
+            label.appendChild(document.createTextNode(atk.weapon));
+        } else {
+            label.textContent = atk.weapon;
+        }
         const formula = document.createElement("div");
         formula.className = "dice-formula";
-        const dp = diceParts(atk.damage_die);
-        formula.textContent = "to hit: " + atk.hit_die + " " + signed(atk.hit_bonus) +
-            "   \u00b7   " + (atk.offhand ? "half damage: " : "damage: ") +
+        formula.textContent = "to hit " + atk.hit_die + " " + signed(atk.hit_bonus) +
+            "  \u00b7  " + (atk.offhand ? "half damage " : "damage ") +
             (dp.valid ? dp.count + "d" + dp.sides : "?") + " " + signed(atk.damage_bonus);
         info.appendChild(label);
         info.appendChild(formula);
@@ -734,40 +830,120 @@ function renderDiceTray(s) {
         const roll = document.createElement("button");
         roll.className = "roll-btn";
         roll.textContent = "Roll";
-        roll.addEventListener("click", () => doRoll(i, roll));
+        roll.addEventListener("click", () => doRoll(i));
         row.appendChild(roll);
 
         tray.appendChild(row);
     });
 }
 
-function doRoll(index) {
+// Pulls the numbers back out of the log line the attack just produced, so the
+// dice land on what actually happened rather than on a random face.
+function parseAttackResult(lines) {
+    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 4; i--) {
+        const line = lines[i] || "";
+        const atk = /= (\d+) vs AC/.exec(line);
+        if (!atk) continue;
+        const dmg = /for (\d+) damage/.exec(line);
+        return {
+            hitTotal: parseInt(atk[1], 10),
+            damage: dmg ? parseInt(dmg[1], 10) : null,
+            weak: /WEAK to/.test(line)
+        };
+    }
+    return null;
+}
+
+async function doRoll(index) {
     if (trayBusy) return;
     trayBusy = true;
+
     const tray = document.getElementById("dice-tray");
-    tray.querySelectorAll(".roll-btn").forEach((b) => { b.disabled = true; });
+    const buttons = tray.querySelectorAll(".roll-btn");
+    for (let i = 0; i < buttons.length; i++) buttons[i].disabled = true;
 
-    const dice = tray.querySelectorAll(".dice-row")[index].querySelectorAll(".die");
+    const row = tray.querySelectorAll(".dice-row")[index];
+    const d20 = row.querySelector(".die.d20");
+    const dice = row.querySelectorAll(".die:not(.d20)");
+    const totalEl = row.querySelector(".dmg-total");
+
     let ticks = 0;
-    const tumble = setInterval(() => {
+    const flicker = setInterval(() => {
         ticks++;
-        dice.forEach((d) => {
-            if (d.classList.contains("d20")) {
-                d.textContent = String(1 + Math.floor(Math.random() * 20));
-            } else {
-                d.innerHTML = dieEl(6, 1 + Math.floor(Math.random() * 6)).innerHTML;
-            }
-            d.classList.add("rolling");
-        });
-        if (ticks >= 4) clearInterval(tumble);
-    }, 110);
+        d20.textContent = String(1 + Math.floor(Math.random() * 20));
+        dice.forEach((d) => { d.innerHTML = dieEl(6, 1 + Math.floor(Math.random() * 6)).innerHTML; });
+        if (ticks >= 6) clearInterval(flicker);
+    }, 95);
 
-    setTimeout(() => {
-        clearInterval(tumble);
-        dice.forEach((d) => d.classList.remove("rolling"));
-        trayBusy = false;
-        doAction(index);
-    }, 560);
+    const diceEls = [d20].concat(Array.prototype.slice.call(dice));
+    diceEls.forEach((d, k) => {
+        d.style.animationDelay = (k * 45) + "ms";
+        d.classList.add("spinning");
+    });
+
+    await new Promise((r) => setTimeout(r, 660));
+    clearInterval(flicker);
+
+    // The server decides the roll; this only reads the answer back out.
+    const before = (currentState.log || []).length;
+    const r = await fetch("/attack", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({offhand: index === 1})
+    });
+    const next = await r.json();
+    const result = parseAttackResult((next.log || []).slice(before));
+
+    diceEls.forEach((d) => {
+        d.classList.remove("spinning");
+        d.classList.add("landed");
+    });
+
+    if (result) {
+        d20.textContent = result.damage === null ? "MISS" : String(result.hitTotal);
+        if (result.damage === null) {
+            d20.classList.add("miss");
+        } else {
+            totalEl.textContent = "-" + result.damage;
+            totalEl.classList.add("show");
+        }
+    }
+
+    await new Promise((r2) => setTimeout(r2, 620));
+    trayBusy = false;
+    render(next);
+}
+
+
+// The Flask build has no animated monster portrait, so the floating damage
+// number is anchored over the combat body instead of a portrait.
+let lastDmgShown = null;
+
+function renderStageDamage(s) {
+    const body = document.getElementById("screen-body");
+    body.classList.toggle("monster-box", s.screen === "combat" && !!s.enemy);
+
+    let layer = body.querySelector(".dmg-layer");
+    const hit = s.last_damage;
+
+    if (!(s.screen === "combat" && s.enemy && hit && hit.amount > 0)) return;
+    // One number per damage event, never repeated by a re-render.
+    if (lastDmgShown === hit) return;
+    lastDmgShown = hit;
+
+    if (!layer) {
+        layer = document.createElement("div");
+        layer.className = "dmg-layer";
+        body.appendChild(layer);
+    }
+    const float = document.createElement("div");
+    float.className = "dmg-float" + (hit.weak ? " weak" : "");
+    float.textContent = "-" + hit.amount;
+    layer.appendChild(float);
+    float.addEventListener("animationend", function () {
+        float.remove();
+        lastDmgShown = null;
+    });
 }
 
 function renderOptions(s) {
@@ -805,24 +981,47 @@ function renderShopItems(s, opts, backIndex) {
     opts.classList.add("shop");
     const gold = s.player ? s.player.gold : 0;
 
+    // The shop puts the NPC's tagline in `body`; no other shop screen text uses
+    // it, so a non-empty body here is always the greeting.
+    if (s.body) {
+        const note = document.createElement("div");
+        note.className = "shop-npc-note";
+        note.textContent = s.body;
+        opts.appendChild(note);
+    }
+
     s.options.forEach((label, i) => {
         if (i === backIndex) return;
         const name = s.shop_items[i];
         const price = s.shop_prices[i];
         const isPotionItem = (s.shop_potions || [])[i] === true;
+        // Another class's armory. The item is still listed and still opens, so
+        // you can compare stats - it just cannot be bought here.
+        const locked = (s.shop_usable || [])[i] === false;
 
         const row = document.createElement("div");
         row.className = "shop-row";
         const btn = document.createElement("button");
-        btn.className = "shop-item";
+        btn.className = "shop-item" + (locked ? " locked" : "");
         btn.textContent = "> " + label;
+        if (locked) {
+            btn.setAttribute("aria-disabled", "true");
+            btn.title = "Not your class's weapon";
+        }
         btn.addEventListener("click", () => toggleShopItem(i));
         row.appendChild(btn);
+
+        if (locked) {
+            const note = document.createElement("div");
+            note.className = "shop-locked-note";
+            note.textContent = "Not your class's weapon";
+            row.appendChild(note);
+        }
 
         if (openShopItem === i) {
             const panel = document.createElement("div");
             panel.className = "shop-detail";
-            panel.innerHTML = detailHtml(name, price);
+            panel.innerHTML = detailHtml(name, price, locked, s.shop_npc_class);
 
             // Potions stack, so they get a quantity stepper. Everything else is
             // a single tap - you do not buy four longswords at once.
@@ -875,7 +1074,9 @@ function renderShopItems(s, opts, backIndex) {
                 box.appendChild(totalLabel);
                 panel.appendChild(box);
             }
-            panel.appendChild(buyBtn);
+            // A locked item gets its note in detailHtml and no Buy button at
+            // all, rather than a button that fails when you press it.
+            if (!locked) panel.appendChild(buyBtn);
             row.appendChild(panel);
         }
         opts.appendChild(row);
@@ -978,6 +1179,7 @@ function render(s) {
 
     renderOptions(s);
     renderDiceTray(s);
+    renderStageDamage(s);
 
     // Log
     const log = document.getElementById("log");

@@ -60,18 +60,64 @@ VULNERABILITIES = {
 WEAK_MULTIPLIER = 1.5
 RESIST_MULTIPLIER = 0.5
 
-# Status effects. Burn and freeze are short and driven by INT; poison sticks
-# until it kills.
+# ---- Element effects ------------------------------------------------------------
+# Five damage types inflict a lasting effect, and every one of them is *rolled
+# for* except dark. That is deliberate: a weapon should be a good investment,
+# not a guaranteed effect, so the stat that matters to you decides how often the
+# rider actually lands.
+#
+# Each effect names the stat it scales on, and no two of them share a stat - INT
+# drives fire and ice, DEX drives poison, WIS drives lightning and STR drives
+# dark. That means your build picks which element you can rely on.
+#
+#   fire      roll to ignite     20% + 3% per INT, capped at 60%
+#   ice       roll to freeze     10% + 1% per 5 INT, capped at 43%
+#   poison    roll to poison     20% + 3% per DEX, capped at 60%
+#   lightning roll to strike     15% + 1% per 2 WIS, capped at 50%
+#   dark      always applies     no chance, but scales on STR instead
+#
+# Ice is the stingiest on purpose: freezing removes the target's entire turn,
+# so a 43% cap keeps it strong rather than overpowered, and +1% per *5* INT
+# means only a dedicated caster closes the gap.
+
+# --- Fire: catches, then burns for two rounds
 BURN_ROUNDS = 2
 BURN_DIE = "1d4"
-FREEZE_INT_THRESHOLD = 15    # at or above this INT, a freeze lasts 2 rounds
+BURN_BASE_CHANCE = 0.20
+BURN_CHANCE_PER_INT = 0.03
+BURN_MAX_CHANCE = 0.60
+
+# --- Ice: no damage at all, but the target loses its whole turn
+FREEZE_BASE_CHANCE = 0.10
+FREEZE_INT_PER_POINT = 5      # one extra point of chance per this much INT
+FREEZE_CHANCE_PER_INT_BLOCK = 0.01
+FREEZE_MAX_CHANCE = 0.43
+FREEZE_INT_THRESHOLD = 15     # at or above this INT, a freeze lasts 2 rounds
 FREEZE_MIN_ROUNDS = 1
 FREEZE_MAX_ROUNDS = 2
-POISON_BASE_CHANCE = 0.20    # +3% per point of DEX
+
+# --- Poison: the mirror of fire, but on DEX, and it never wears off
+POISON_BASE_CHANCE = 0.20
 POISON_CHANCE_PER_DEX = 0.03
 POISON_MAX_CHANCE = 0.60
 # Poison is never "wearing off" - it runs until the creature is dead.
 POISON_MAX_ROUNDS = 999
+
+# --- Lightning: the WIS effect, and the hardest-hitting of the short riders
+LIGHTNING_ROUNDS = 2
+LIGHTNING_DIE = "1d8"
+LIGHTNING_BASE_CHANCE = 0.15
+LIGHTNING_WIS_PER_POINT = 2    # one extra point of chance per this much WIS
+LIGHTNING_CHANCE_PER_WIS_BLOCK = 0.01
+LIGHTNING_MAX_CHANCE = 0.50
+
+# --- Dark: the odd one out. No roll at all, and it scales on STR.
+# 1d4 + 1 for every 15 points of STR, so it starts at a flat 1d4 on a 10 STR
+# character and only reaches 1d4+2 at STR 30.
+DARK_ROUNDS = 3
+DARK_DIE = "1d4"
+DARK_STR_PER_POINT = 15       # one extra point of damage per this much STR
+DARK_DAMAGE_PER_STR_BLOCK = 1
 
 
 class Enemy:
@@ -110,6 +156,10 @@ class Enemy:
             "freeze_rounds": 0,
             "poison_rounds": 0,
             "poison_damage": 0,
+            "strike_rounds": 0,
+            "strike_damage": 0,
+            "drain_rounds": 0,
+            "drain_damage": 0,
         }
 
     def status_text(self):
@@ -120,6 +170,10 @@ class Enemy:
             parts.append(f"Frozen ({s['freeze_rounds']})")
         if s["burn_rounds"] > 0:
             parts.append(f"Burning ({s['burn_rounds']})")
+        if s["strike_rounds"] > 0:
+            parts.append(f"Struck ({s['strike_rounds']})")
+        if s["drain_rounds"] > 0:
+            parts.append(f"Draining ({s['drain_rounds']})")
         if s["poison_rounds"] > 0:
             parts.append("Poisoned")
         return ", ".join(parts)
@@ -156,34 +210,66 @@ class Enemy:
     def inflict_element(self, element, player):
         """Apply the element a weapon carries. `player` scales it.
 
-        Fire and ice scale with INT, poison with DEX. Returns a log fragment.
+        Each element has its own chance roll and its own stat - see the block of
+        constants above. A failed roll says so and costs nothing. Returns a log
+        fragment, or "" when the weapon carries no element.
         """
         if not element or player is None:
             return ""
         s = self.status
+        stats = player.effective_stats()
 
         if element == "fire":
+            chance = min(BURN_MAX_CHANCE,
+                         BURN_BASE_CHANCE + BURN_CHANCE_PER_INT * stats["INT"])
+            if random.random() >= chance:
+                return " The fire did not catch."
             s["burn_rounds"] = BURN_ROUNDS
-            int_mod = player.modifier("INT")
-            s["burn_damage"] = max(1, roll(BURN_DIE) + max(0, int_mod))
+            s["burn_damage"] = max(1, roll(BURN_DIE) + max(0, player.modifier("INT")))
             return (f" It catches fire ({s['burn_damage']}/round "
                     f"for {BURN_ROUNDS} rounds)!")
 
         if element == "ice":
-            rounds = (FREEZE_MAX_ROUNDS if player.effective_stats()["INT"] >= FREEZE_INT_THRESHOLD
+            chance = min(FREEZE_MAX_CHANCE,
+                         FREEZE_BASE_CHANCE
+                         + FREEZE_CHANCE_PER_INT_BLOCK * (stats["INT"] // FREEZE_INT_PER_POINT))
+            if random.random() >= chance:
+                return " The ice did not freeze it."
+            rounds = (FREEZE_MAX_ROUNDS if stats["INT"] >= FREEZE_INT_THRESHOLD
                       else FREEZE_MIN_ROUNDS)
             s["freeze_rounds"] = max(s["freeze_rounds"], rounds)
             plural = "s" if rounds > 1 else ""
             return f" It is frozen for {rounds} round{plural}!"
 
         if element == "poison":
-            dex = player.effective_stats()["DEX"]
-            chance = min(POISON_MAX_CHANCE, POISON_BASE_CHANCE + POISON_CHANCE_PER_DEX * dex)
+            chance = min(POISON_MAX_CHANCE,
+                         POISON_BASE_CHANCE + POISON_CHANCE_PER_DEX * stats["DEX"])
             if random.random() >= chance:
                 return " The poison did not take."
             s["poison_rounds"] = POISON_MAX_ROUNDS
             s["poison_damage"] = max(1, player.modifier("DEX"))
             return f" It is poisoned ({s['poison_damage']}/round until it dies)!"
+
+        if element == "lightning":
+            chance = min(LIGHTNING_MAX_CHANCE,
+                         LIGHTNING_BASE_CHANCE
+                         + LIGHTNING_CHANCE_PER_WIS_BLOCK
+                         * (stats["WIS"] // LIGHTNING_WIS_PER_POINT))
+            if random.random() >= chance:
+                return " The lightning misses."
+            s["strike_rounds"] = LIGHTNING_ROUNDS
+            s["strike_damage"] = max(1, roll(LIGHTNING_DIE) + max(0, player.modifier("WIS")))
+            return (f" It is struck by lightning ({s['strike_damage']}/round "
+                    f"for {LIGHTNING_ROUNDS} rounds)!")
+
+        if element == "dark":
+            # Dark has no chance roll on purpose - it is the one rider that is
+            # guaranteed, and it pays for that by being weak and STR-scaled.
+            s["drain_rounds"] = DARK_ROUNDS
+            s["drain_damage"] = max(
+                1, roll(DARK_DIE) + DARK_DAMAGE_PER_STR_BLOCK * (stats["STR"] // DARK_STR_PER_POINT))
+            return (f" It is drained of life ({s['drain_damage']}/round "
+                    f"for {DARK_ROUNDS} rounds)!")
 
         return ""
 
@@ -195,6 +281,14 @@ class Enemy:
             self.take_damage(s["burn_damage"])
             s["burn_rounds"] -= 1
             lines.append(f"{self.name} burns for {s['burn_damage']} damage.")
+        if s["strike_rounds"] > 0:
+            self.take_damage(s["strike_damage"])
+            s["strike_rounds"] -= 1
+            lines.append(f"{self.name} is struck for {s['strike_damage']} damage.")
+        if s["drain_rounds"] > 0:
+            self.take_damage(s["drain_damage"])
+            s["drain_rounds"] -= 1
+            lines.append(f"{self.name} is drained for {s['drain_damage']} damage.")
         if s["poison_rounds"] > 0:
             self.take_damage(s["poison_damage"])
             s["poison_rounds"] -= 1

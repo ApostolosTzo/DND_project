@@ -1,3 +1,4 @@
+import re
 class Weapon:
     def __init__(self, name, damage_dice, damage_type, properties=None, stats_bonus=None):
         self.name = name
@@ -110,9 +111,9 @@ ITEMS = {
     "Glaive": Weapon("Glaive", "2d6", "slashing", ["two-handed", "heavy"], stats_bonus={"STR": 2}),
     "Lucerne Hammer": Weapon("Lucerne Hammer", "2d6", "piercing", ["two-handed", "heavy"], stats_bonus={"STR": 2}),
     "Greataxe": Weapon("Greataxe", "2d6", "slashing", ["two-handed", "heavy"], stats_bonus={"STR": 3}),
-    "Maul": Weapon("Maul", "2d10", "bludgeoning", ["two-handed", "heavy"], stats_bonus={"STR": 3}),
+    "Maul": Weapon("Maul", "2d6+2", "bludgeoning", ["two-handed", "heavy"], stats_bonus={"STR": 3}),
     "War Sickle": Weapon("War Sickle", "1d8", "slashing", ["versatile", "light"], stats_bonus={"STR": 1}),
-    "Kris Dagger": Weapon("Kris Dagger", "1d4", "piercing", ["finesse", "light", "thrown"], stats_bonus={"DEX": 1}),
+    "Kris Dagger": Weapon("Kris Dagger", "2d4", "piercing", ["finesse", "light", "thrown"], stats_bonus={"DEX": 1}),
     "Broadsword": Weapon("Broadsword", "2d4", "slashing", ["two-handed", "versatile"], stats_bonus={"STR": 1}),
     "Cudgel": Weapon("Cudgel", "1d4", "bludgeoning", ["light"], stats_bonus={"STR": 1}),
     "Bone Club": Weapon("Bone Club", "1d6", "bludgeoning", ["light"], stats_bonus={"STR": 1}),
@@ -130,8 +131,8 @@ ITEMS = {
     "Frost Staff": Weapon("Frost Staff", "2d6", "cold", ["two-handed", "magic"], stats_bonus={"INT": 2}),
     "Storm Wand": Weapon("Storm Wand", "1d6", "lightning", ["magic", "ranged"], stats_bonus={"DEX": 1}),
     "Bone Wand": Weapon("Bone Wand", "1d6", "dark", ["magic", "ranged"], stats_bonus={"WIS": 1}),
-    "Runed Dagger": Weapon("Runed Dagger", "1d4", "force", ["finesse", "light", "magic"], stats_bonus={"DEX": 2, "INT": 1}),
-    "Venom Dagger": Weapon("Venom Dagger", "1d4", "poison", ["finesse", "light", "thrown"], stats_bonus={"DEX": 1}),
+    "Runed Dagger": Weapon("Runed Dagger", "2d4+2", "force", ["finesse", "light", "magic"], stats_bonus={"DEX": 2, "INT": 1}),
+    "Venom Dagger": Weapon("Venom Dagger", "2d4+5", "poison", ["finesse", "light", "thrown"], stats_bonus={"DEX": 3}),
     "Plasma Wand": Weapon("Plasma Wand", "1d6", "poison", ["magic", "ranged"], stats_bonus={"INT": 1}),
 
     # --- Extra armour and shields (added: 30) ---
@@ -226,20 +227,32 @@ def is_material(item):
 # here is all that is needed; nothing hard-codes a potion's strength.
 # Mirrors POTION_HEAL in js/items.js.
 POTION_HEAL = {
-    "Healing Potion": 9,
-    "Greater Healing Potion": 20,
-    "Superior Healing Potion": 100,
-    "Grand Healing Potion": 300,
-    "Ultimate Healing Potion": 800,
+    "Healing Potion": 10,
+    "Greater Healing Potion": 55,
+    "Superior Healing Potion": 120,
+    "Grand Healing Potion": 220,
+    "Ultimate Healing Potion": 360,
 }
 
 # The level each tier starts appearing in shops.
+#
+# The game now runs to level 200 (see shop.UNLOCK_TIERS), so the ladder has to
+# spread over the same range or the top tier would be bought at level 70 and
+# then never again.
+#
+# The heal amounts scale with the gate for the same reason. Maximum HP grows
+# linearly with level (about 3 per level for the middle classes, 4 for a
+# Fighter and 2 for a Wizard), so a fixed 20 HP potion that was a third of a
+# level-5 character is a rounding error at level 60. Each tier is tuned to
+# roughly **55% of the max HP of an average class** at the level it unlocks,
+# which lands at about 45% for a Fighter and 90% for a Wizard - so a big potion
+# is always worth drinking, never just wasted.
 POTION_MIN_LEVEL = {
     "Healing Potion": 1,
-    "Greater Healing Potion": 5,
-    "Superior Healing Potion": 15,
-    "Grand Healing Potion": 35,
-    "Ultimate Healing Potion": 70,
+    "Greater Healing Potion": 25,
+    "Superior Healing Potion": 60,
+    "Grand Healing Potion": 120,
+    "Ultimate Healing Potion": 200,
 }
 
 
@@ -259,6 +272,26 @@ def heal_amount(name):
 # A two-handed weapon needs both hands, which is what locks the off-hand (see
 # player.py). It also hits harder: the bonus below is added to every hit, and
 # is keyed off the damage dice so it always matches the weapon it belongs to.
+# The rule, not a lookup table: two dice are worth more than one, and a bigger
+# die is worth more than a smaller one. Longsword (1d8) and Greatsword (2d6)
+# both land on +1; Maul (2d10) gets +2; a dagger (1d4) gets nothing.
+#
+# This parses the "NdX+Y" string rather than matching it exactly, so a weapon
+# whose dice were rebalanced (Maul became 2d6+2) keeps its bonus instead of
+# silently dropping to zero because the key no longer exists.
+def two_handed_bonus_for(dice):
+    """Bonus for a two-handed weapon rolling this dice string."""
+    m = re.match(r"^(\d*)d(\d+)", str(dice).strip())
+    if not m:
+        return 0
+    count = int(m.group(1) or "1")
+    sides = int(m.group(2))
+    if count >= 2:
+        return 2 if sides >= 10 else 1
+    return 1 if sides >= 8 else 0
+
+# Reference table for documentation and for the player guide. Kept in sync with
+# two_handed_bonus_for() above, which is what the game actually calls.
 TWO_HANDED_BONUS = {
     "1d4": 0, "1d6": 0, "1d8": 1, "1d10": 1, "1d12": 1,
     "2d4": 1, "2d6": 1, "2d10": 2, "2d12": 2,
@@ -274,7 +307,7 @@ def two_handed_bonus(weapon):
     """Extra damage a two-handed weapon deals, or 0 for anything else."""
     if not is_two_handed(weapon):
         return 0
-    return TWO_HANDED_BONUS.get(weapon.damage_dice, 0)
+    return two_handed_bonus_for(weapon.damage_dice)
 
 
 # -----------------------------
@@ -291,8 +324,25 @@ DAMAGE_TYPE_ALIASES = {
 DAMAGE_TYPES = ["slashing", "bludgeoning", "piercing", "fire",
                 "ice", "lightning", "dark", "force", "poison"]
 
-# Only these three inflict a lasting effect when they land a hit.
-ELEMENT_STATUS = {"fire": "burn", "ice": "freeze", "poison": "poison"}
+# Every one of these five inflicts a lasting effect when the hit lands. Each
+# one has its own application chance and its own scaling stat - see enemy.py,
+# which is where the numbers actually live.
+#
+#   fire      rolls to ignite, scales on INT
+#   ice       rolls to freeze, scales on INT
+#   poison    rolls to poison, scales on DEX, runs until the creature dies
+#   lightning rolls to strike, scales on WIS
+#   dark      always applies, and hits harder the more STR you have
+#
+# force, slashing, bludgeoning and piercing deliberately stay out of this table:
+# they are plain damage with no rider.
+ELEMENT_STATUS = {
+    "fire": "burn",
+    "ice": "freeze",
+    "poison": "poison",
+    "lightning": "strike",
+    "dark": "drain",
+}
 
 
 def damage_type(name):
@@ -308,3 +358,95 @@ def element_of(weapon):
     t = damage_type(weapon.damage_type)
     return t if t in ELEMENT_STATUS else None
 
+
+# -----------------------------
+# Which class may wield which weapon
+# -----------------------------
+# Every weapon belongs to one class's armory, or to ALL_CLASSES when anyone can
+# pick it up. The four class armories drive shop.py: each class gets its own
+# themed NPC, and browsing someone else's stall shows their gear greyed out
+# with a "not your class's weapon" note.
+#
+# Bows, darts, crossbows and the plain Wand are deliberately universal. That is
+# what lets a Fighter walk into the Wizard's stall and still buy a bow or a
+# wand without anything being in the way.
+ALL_CLASSES = ["Fighter", "Rogue", "Wizard", "Cleric"]
+
+WEAPON_CLASSES = {
+    # --- Fighter: heavy blades, axes and polearms
+    "Longsword": ["Fighter"],
+    "Greatsword": ["Fighter"],
+    "Battle Axe": ["Fighter"],
+    "Spear": ["Fighter"],
+    "Trident": ["Fighter"],
+    "Glaive": ["Fighter"],
+    "Lucerne Hammer": ["Fighter"],
+    "Executioner's Axe": ["Fighter"],
+    "Greataxe": ["Fighter"],
+    "Maul": ["Fighter"],
+    "Claymore": ["Fighter"],
+    "Falchion": ["Fighter"],
+    "Broadsword": ["Fighter"],
+    "Anchor": ["Fighter"],
+    "War Sickle": ["Fighter"],
+    "Cudgel": ["Fighter"],
+
+    # --- Rogue: finesse blades and thrown daggers
+    "Rapier": ["Rogue"],
+    "Dagger": ["Rogue"],
+    "Shortsword": ["Rogue"],
+    "Sabre": ["Rogue"],
+    "Scimitar": ["Rogue"],
+    "Kris Dagger": ["Rogue"],
+    "Viper Fang": ["Rogue"],
+    "Venom Dagger": ["Rogue"],
+    "Bone Club": ["Rogue"],
+    # A runed dagger is both a rogue's blade and a wizard's focus.
+    "Runed Dagger": ["Rogue", "Wizard"],
+
+    # --- Wizard: staves and elemental wands
+    "Magic Staff": ["Wizard"],
+    "Arcane Staff": ["Wizard"],
+    "Lampada": ["Wizard"],
+    "Ember Blade": ["Wizard"],
+    "Frost Staff": ["Wizard"],
+    "Storm Wand": ["Wizard"],
+    "Plasma Wand": ["Wizard"],
+
+    # --- Cleric: maces, flails and divine tools
+    "Quarterstaff": ["Cleric"],
+    "War Hammer": ["Cleric"],
+    "Mace": ["Cleric"],
+    "Flail": ["Cleric"],
+    "Bone Wand": ["Cleric"],
+
+    # --- Universal: ranged kit and the plain Wand
+    "Shortbow": ALL_CLASSES,
+    "Longbow": ALL_CLASSES,
+    "Sling": ALL_CLASSES,
+    "Dart": ALL_CLASSES,
+    "Javelin": ALL_CLASSES,
+    "Hand Crossbow": ALL_CLASSES,
+    "Light Crossbow": ALL_CLASSES,
+    "Crossbow": ALL_CLASSES,
+    "Composite Bow": ALL_CLASSES,
+    "Heavy Crossbow": ALL_CLASSES,
+    "Repeating Crossbow": ALL_CLASSES,
+    "Wand": ALL_CLASSES,
+}
+
+
+def item_classes(item):
+    """Classes that may equip this item, as a list.
+
+    Armour, shields and consumables are open to everyone. Only weapons carry a
+    class restriction, and only via WEAPON_CLASSES.
+    """
+    if item is None or getattr(item, "category", None) != "weapon":
+        return list(ALL_CLASSES)
+    return list(WEAPON_CLASSES.get(item.name, ALL_CLASSES))
+
+
+def usable_by(item, class_name):
+    """True when a character of `class_name` may equip `item`."""
+    return class_name in item_classes(item)
