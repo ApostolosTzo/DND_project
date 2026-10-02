@@ -410,26 +410,90 @@ function questNpcAction(npcIndex, choice) {
 // Combat
 // -----------------------------
 
+// Proficiency bonus, shared by the main-hand and off-hand attack rolls so the
+// two can never disagree.
+function profBonus(p) {
+    return Math.floor((p.level - 1) / 4) + 2;
+}
+
+// A weapon in the off-hand gets its own attack this turn, at half damage. A
+// shield is not a weapon, so it contributes no extra swing.
+function hasOffhandWeapon(p) {
+    return !!(p && p.offhand && p.offhand.category === "weapon");
+}
+
+// Half damage, rounded down, never less than 1. The off-hand never gets the
+// two-handed bonus either - it cannot hold such a weapon.
+const OFFHAND_DAMAGE_DIVISOR = 2;
+
 function combatState() {
     const e = gs.enemy;
     const p = gs.player;
     const status = e.status_text();
     const body = e.display() + (status ? "\n" + status : "") +
         "\n\n" + p.name + ": HP " + p.hp + "/" + p.max_hp + "  AC " + p.ac;
-    if (gs.dungeon_floor > 0) {
-        return respond("combat", "COMBAT", body, ["Attack", "Use Item"]);
-    }
-    return respond("combat", "COMBAT", body, ["Attack", "Use Item", "Flee"]);
+
+    const options = ["Attack"];
+    if (hasOffhandWeapon(p)) options.push("Off-hand Attack");
+    options.push("Use Item");
+    if (gs.dungeon_floor === 0) options.push("Flee");
+    return respond("combat", "COMBAT", body, options, combatRollPayload());
+}
+
+// Everything the dice tray needs to show the rolls the player is about to make.
+function combatRollPayload() {
+    const p = gs.player;
+    const e = gs.enemy;
+    if (!p || !e) return {};
+    return {
+        attacks: [
+            attackRollInfo(p, p.weapon, false)
+        ].concat(hasOffhandWeapon(p) ? [attackRollInfo(p, p.offhand, true)] : [])
+    };
+}
+
+// One line of "what am I about to roll", used by both UIs to draw the dice.
+function attackRollInfo(p, weapon, isOffhand) {
+    const mod = weaponMod(p, weapon);
+    const full = mod + (isOffhand ? 0 : twoHandedBonus(weapon));
+    const info = {
+        label: isOffhand ? "Off-hand Attack" : "Attack",
+        weapon: weapon ? weapon.name : "Bare hands",
+        hit_die: "1d20",
+        hit_bonus: profBonus(p) + mod,
+        mod: mod,
+        damage_die: weapon ? weapon.damage_dice : "1",
+        type: weapon ? damageType(weapon.damage_type) : null,
+        offhand: !!isOffhand
+    };
+    info.damage_bonus = isOffhand
+        ? Math.floor(full / OFFHAND_DAMAGE_DIVISOR)
+        : full;
+    return info;
+}
+
+// Which stat an attack with this weapon uses.
+function weaponMod(p, weapon) {
+    if (weapon && weapon.properties.indexOf("finesse") !== -1) return p.modifier("DEX");
+    if (weapon && weapon.properties.indexOf("ranged") !== -1) return p.modifier("DEX");
+    return p.modifier("STR");
 }
 
 function combatAction(choice) {
     const p = gs.player;
     const e = gs.enemy;
 
-    // Attack
-    if (choice === 0) {
+    // The option list grows when an off-hand weapon is held, so the indices
+    // are resolved by position rather than hard-coded.
+    const hasOff = hasOffhandWeapon(p);
+    const OPT_USE = hasOff ? 2 : 1;
+    const OPT_FLEE = hasOff ? 3 : 2;
+
+    // Attack / Off-hand Attack - both cost the whole turn.
+    if (choice === 0 || (hasOff && choice === 1)) {
+        const isOffhand = hasOff && choice === 1;
         // The combat log accumulates: every exchange stays visible in the chat.
-        gs.log.push(webPlayerAttack(p, e));
+        gs.log.push(isOffhand ? webOffhandAttack(p, e) : webPlayerAttack(p, e));
 
         if (!e.is_alive()) return combatReward("Victory!");
 
@@ -450,7 +514,7 @@ function combatAction(choice) {
     }
 
     // Use Item
-    if (choice === 1) {
+    if (choice === OPT_USE) {
         const items = combatItemList(p);
         if (!items.length) {
             gs.log = ["You have nothing to use!"];
@@ -458,12 +522,13 @@ function combatAction(choice) {
         }
         const options = items.map((item) => combatItemLabel(item)).concat(["(Back)"]);
         return respond("combat_item", "Use Item",
-            "Choose an item — strongest healing potion first. Nothing here can be used in combat yet is listed greyed out.",
-            options, { combat_items: items.map((i) => i.name) });
+            "Choose an item — strongest healing potion first. Nothing here can be " +
+            "used in combat yet is listed greyed out.", options,
+            { combat_items: items.map((i) => i.name) });
     }
 
     // Flee (not allowed in the dungeon)
-    if (choice === 2) {
+    if (choice === OPT_FLEE) {
         if (gs.dungeon_floor > 0) {
             gs.log = ["You cannot flee from the dungeon!"];
             return combatState();
@@ -584,15 +649,9 @@ function combatItemState() {
 
 function webPlayerAttack(p, e) {
     let mod;
-    if (p.weapon && p.weapon.properties.indexOf("finesse") !== -1) {
-        mod = p.modifier("DEX");
-    } else if (p.weapon && p.weapon.properties.indexOf("ranged") !== -1) {
-        mod = p.modifier("DEX");
-    } else {
-        mod = p.modifier("STR");
-    }
+    mod = weaponMod(p, p.weapon);
 
-    const prof = Math.floor((p.level - 1) / 4) + 2;
+    const prof = profBonus(p);
     const atk = roll("1d20") + prof + mod;
 
     if (atk >= e.ac) {
@@ -617,6 +676,34 @@ function webPlayerAttack(p, e) {
         return line;
     }
     return "You missed! (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
+}
+
+// The off-hand swing: its own hit roll, half damage. It is a whole turn of its
+// own, so using it gives up the main-hand attack and lets the monster retaliate.
+function webOffhandAttack(p, e) {
+    const w = p.offhand;
+    const mod = weaponMod(p, w);
+    const prof = profBonus(p);
+    const atk = roll("1d20") + prof + mod;
+
+    if (atk >= e.ac) {
+        // Half of (dice + modifier), rounded down, never less than 1. The
+        // two-handed bonus is deliberately absent - it cannot be held anyway.
+        const full = Math.max(roll(w.damage_dice) + mod, 1);
+        const dmg = Math.max(Math.floor(full / OFFHAND_DAMAGE_DIVISOR), 1);
+        const type = damageType(w.damage_type);
+        const result = e.apply_damage(dmg, type);
+        const effect = e.inflict_element(elementOf(w), p);
+
+        let line = "Off-hand " + w.name + " hits the " + e.name + " for " +
+            result.total + " damage!" + result.note +
+            " (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac +
+            ", half damage)";
+        if (effect) line += effect;
+        return line;
+    }
+    return "Off-hand " + w.name + " missed! (d20 + " + prof + " + " + mod +
+        " = " + atk + " vs AC " + e.ac + ")";
 }
 
 function webEnemyAttack(p, e) {

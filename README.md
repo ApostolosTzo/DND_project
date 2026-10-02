@@ -89,6 +89,8 @@ Because of this, every change is checked with a **parity script** that compares 
 - **Repeatable quests** — three randomly-named quest givers in Town trade gold and XP for monster materials
 - **Monster drops** — 7 materials dropped by the creatures that carry them (used for quests)
 - **Turn-based combat** — attack, use items, or flee against level-scaled enemies (no fleeing in dungeon)
+- **Off-hand attacks** — a weapon in the off-hand adds a second attack option each turn at half damage. It costs you the main-hand swing and the monster still retaliates, so it is a real choice. A shield is not a weapon and grants no extra swing
+- **Dice tray** — on your turn the dice for each available attack are shown with a **Roll** button. You can see the die, the weapon and the exact modifier before spending the turn
 - **Running combat log** — every exchange stays in the chat, so you can read back through a whole fight
 - **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
 - **Monster portraits** — original hand-drawn SVG for all 9 monsters; they lurch when hit and distort as they lose HP
@@ -227,7 +229,7 @@ icons/icon-maskable-512.png   # 512x512, art inside the middle 80% circle
 icons/apple-touch-icon.png   # 180x180
 ```
 
-After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v5`) so returning visitors pick up the new icons.
+After changing them, bump `CACHE_VERSION` in `sw.js` (e.g. `dnd-pwa-v7`) so returning visitors pick up the new icons.
 
 > The cached files include everything under `js/`, and those are served **cache-first**. Bump `CACHE_VERSION` whenever you change `js/*.js` — otherwise players keep running the old game code even though the HTML updates.
 
@@ -328,6 +330,11 @@ also hits harder, with a bonus keyed to its damage dice:
 Equip a one-handed weapon and the off-hand frees up for a shield or a second
 one-handed weapon. Equipping a two-handed weapon sends whatever was in the
 off-hand back to your bag rather than dropping it.
+
+A weapon in the off-hand gets its own **Off-hand Attack** each turn, at half
+damage: `floor((dice + modifier) / 2)`. It is a full turn, so you give up the
+main-hand swing and the monster retaliates. A shield is not a weapon, so it
+adds AC but no extra attack.
 
 > The Fighter's starting Longsword is two-handed, so a new Fighter cannot equip a
 > shield until it switches to a one-handed weapon.
@@ -529,7 +536,7 @@ honest:
 - Crafting system (craft from enemy drops)
 - More items, races, classes
 - Skills and spells in combat (INT and WIS now drive elemental weapons; both are otherwise still placeholders)
-- Off-hand attacks — a second weapon currently gives AC and stats but no extra attack
+- Off-hand rules are minimal — half damage and no minimum die roll; a shield is still the safer early pick
 - Status effects on the player — fire, ice and poison only work on monsters for now
 - Sell back items to shops
 - Difficulty scaling options

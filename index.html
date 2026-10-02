@@ -198,6 +198,60 @@
 
         /* ---------- Combat item list ---------- */
         .combat-item-disabled { color: #6a6a70; }
+
+        /* ---------- Dice tray: shows the pending rolls ---------- */
+        #dice-tray {
+            display: none;
+            background: #151517;
+            border: 1px solid #2e2e33;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+        #dice-tray.on { display: block; }
+        .dice-tray-title {
+            color: #c9a84c; font-size: 0.8em; letter-spacing: 1px;
+            text-transform: uppercase; margin-bottom: 10px;
+        }
+        .dice-row {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            padding: 8px 0; border-top: 1px solid #242428;
+        }
+        .dice-row:first-of-type { border-top: none; }
+        .dice-group { display: flex; gap: 6px; align-items: center; }
+        /* A die is a plain square: pips are drawn as a grid of dots, which
+           keeps it readable at any size and needs no image asset. */
+        .die {
+            width: 34px; height: 34px; border-radius: 6px;
+            background: #f0ece0; border: 1px solid #b9b2a0;
+            display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+            padding: 4px; gap: 1px;
+            box-shadow: 0 2px 0 #7a7466;
+        }
+        .die.d20 { border-radius: 50%; width: 38px; height: 38px; }
+        .die .pip { width: 5px; height: 5px; border-radius: 50%; background: #1a1a1c; }
+        .die .pip.off { background: transparent; }
+        .die.rolling { animation: die-tumble .5s ease-in-out; }
+        @keyframes die-tumble {
+            0%   { transform: rotate(0deg) scale(1); }
+            25%  { transform: rotate(-140deg) scale(1.25); }
+            50%  { transform: rotate(110deg) scale(.9); }
+            75%  { transform: rotate(-50deg) scale(1.15); }
+            100% { transform: rotate(0deg) scale(1); }
+        }
+        .dice-info { flex: 1; min-width: 130px; }
+        .dice-label { color: #d6d6d6; font-size: 0.9em; }
+        .dice-label .off-tag { color: #c9a84c; font-size: 0.85em; }
+        .dice-formula { color: #8a8a8a; font-size: 0.78em; margin-top: 2px; }
+        .roll-btn {
+            background: #c9a84c; color: #0b0b0c; border: none;
+            padding: 10px 26px; font-family: 'Courier New', monospace;
+            font-size: 0.95em; cursor: pointer; border-radius: 4px;
+            min-height: 44px; transition: 0.15s; touch-action: manipulation;
+        }
+        .roll-btn:hover { background: #dbb95c; }
+        .roll-btn:disabled { background: #2e2e33; color: #8a8a8a; cursor: wait; }
+        .roll-result { color: #2fbf71; font-size: 0.85em; margin-top: 6px; }
         .hint { color: #6a6a70; font-size: 0.72em; margin-top: 8px; text-align: right; }
         #log {
             margin-top: 15px;
@@ -378,6 +432,7 @@
                 <button id="back-btn" data-back="1">&larr; Back</button>
                 <div id="screen-title"></div>
             </div>
+            <div id="dice-tray"></div>
             <div id="combat-stage"></div>
             <div id="screen-body"></div>
             <div id="options"></div>
@@ -1467,6 +1522,173 @@ function toggleShopItem(i) {
     renderOptions(currentState);
 }
 
+// -----------------------------
+// Dice tray
+// -----------------------------
+// On the player's turn the tray shows the dice for each attack they may make
+// and a Roll button. The roll itself is decided by the game, not here: the
+// animation is theatre, and the authoritative number appears in the combat log
+// a moment later. What the tray guarantees is that you can see *what* is about
+// to be rolled before you commit the turn.
+
+const PIP_LAYOUT = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8]
+};
+
+// Builds one die element showing `value` (1-based). Pass 0 for a blank face.
+function dieEl(sides, value, isTwenty) {
+    const el = document.createElement("div");
+    el.className = "die" + (isTwenty ? " d20" : "");
+    const shown = value ? ((value - 1) % sides) + 1 : 1;
+    const on = PIP_LAYOUT[shown] || PIP_LAYOUT[1];
+    for (let i = 0; i < 9; i++) {
+        const pip = document.createElement("span");
+        pip.className = "pip" + (on.indexOf(i) === -1 ? " off" : "");
+        el.appendChild(pip);
+    }
+    return el;
+}
+
+// A d20 shows its own number instead of pips - 20 faces would be unreadable.
+function d20El(value) {
+    const el = document.createElement("div");
+    el.className = "die d20";
+    el.style.display = "grid";
+    el.style.placeItems = "center";
+    el.style.color = "#1a1a1c";
+    el.style.fontSize = "13px";
+    el.style.fontFamily = "'Courier New', monospace";
+    el.style.fontWeight = "bold";
+    el.textContent = value ? String(value) : "?";
+    return el;
+}
+
+function diceGroup(sides, label) {
+    const wrap = document.createElement("div");
+    wrap.className = "dice-group";
+    if (sides === 20) {
+        wrap.appendChild(d20El(0));
+    } else {
+        for (let i = 0; i < Math.min(sides, 3); i++) wrap.appendChild(dieEl(sides, 0));
+    }
+    const tag = document.createElement("span");
+    tag.className = "dice-formula";
+    tag.textContent = "d" + sides;
+    wrap.appendChild(tag);
+    return wrap;
+}
+
+// Counts the dice in a "2d6" string so the tray can show the right number.
+function diceParts(expr) {
+    const m = /^(\d*)d(\d+)$/.exec(String(expr || "").trim());
+    if (!m) return { count: 1, sides: 6, valid: false };
+    return { count: parseInt(m[1] || "1", 10), sides: parseInt(m[2], 10), valid: true };
+}
+
+function signed(n) {
+    return (n >= 0 ? "+" : "") + n;
+}
+
+let trayBusy = false;
+
+function renderDiceTray(s) {
+    const tray = document.getElementById("dice-tray");
+    const attacks = s.attacks || [];
+    const show = s.screen === "combat" && attacks.length > 0;
+
+    if (!show) {
+        tray.classList.remove("on");
+        tray.innerHTML = "";
+        return;
+    }
+
+    tray.classList.add("on");
+    tray.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.className = "dice-tray-title";
+    title.textContent = "Your turn" + (s.enemy ? " — vs " + s.enemy.name + " (AC " + s.enemy.ac + ")" : "");
+    tray.appendChild(title);
+
+    attacks.forEach((atk, i) => {
+        const row = document.createElement("div");
+        row.className = "dice-row";
+
+        const hitParts = diceParts(atk.hit_die);
+        const dmgParts = diceParts(atk.damage_die);
+        row.appendChild(diceGroup(hitParts.sides, "hit"));
+
+        const info = document.createElement("div");
+        info.className = "dice-info";
+        const label = document.createElement("div");
+        label.className = "dice-label";
+        label.innerHTML = atk.offhand
+            ? '<span class="off-tag">Off-hand</span> ' + escapeHtml(atk.weapon)
+            : escapeHtml(atk.weapon);
+        const formula = document.createElement("div");
+        formula.className = "dice-formula";
+        formula.textContent = "to hit: " + atk.hit_die + " " + signed(atk.hit_bonus) +
+            "   ·   " + (atk.offhand ? "half damage: " : "damage: ") +
+            (dmgParts.valid ? dmgParts.count + "d" + dmgParts.sides : "?") +
+            " " + signed(atk.damage_bonus);
+        info.appendChild(label);
+        info.appendChild(formula);
+        row.appendChild(info);
+
+        const roll = document.createElement("button");
+        roll.className = "roll-btn";
+        roll.textContent = "Roll";
+        roll.addEventListener("click", () => doRoll(i, roll));
+        row.appendChild(roll);
+
+        tray.appendChild(row);
+    });
+}
+
+function escapeHtml(text) {
+    const d = document.createElement("div");
+    d.textContent = String(text);
+    return d.innerHTML;
+}
+
+// Tumbles the dice, then commits the action. The animation is short on purpose:
+// it is a confirmation beat, not a cutscene the player has to sit through.
+function doRoll(index, button) {
+    if (trayBusy) return;
+    trayBusy = true;
+    const tray = document.getElementById("dice-tray");
+    tray.querySelectorAll(".roll-btn").forEach((b) => { b.disabled = true; });
+
+    // Cycle random faces so the tumble reads as dice rather than a spinner.
+    const dice = tray.querySelectorAll(".dice-row")[index].querySelectorAll(".die");
+    let ticks = 0;
+    const tumble = setInterval(() => {
+        ticks++;
+        dice.forEach((d) => {
+            if (d.classList.contains("d20")) {
+                d.textContent = String(1 + Math.floor(Math.random() * 20));
+            } else {
+                const fresh = dieEl(6, 1 + Math.floor(Math.random() * 6));
+                d.innerHTML = fresh.innerHTML;
+            }
+            d.classList.add("rolling");
+        });
+        if (ticks >= 4) clearInterval(tumble);
+    }, 110);
+
+    setTimeout(() => {
+        clearInterval(tumble);
+        dice.forEach((d) => d.classList.remove("rolling"));
+        trayBusy = false;
+        doAction(index);
+    }, 560);
+}
+
 function render(s) {
     const prevScreen = currentState ? currentState.screen : null;
     currentState = s;
@@ -1487,6 +1709,7 @@ function render(s) {
     }
 
     renderOptions(s);
+    renderDiceTray(s);
 
     // Log - every message in the batch stays, newest at the bottom
     const log = document.getElementById("log");

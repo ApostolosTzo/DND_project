@@ -1339,14 +1339,120 @@ option list. Out of combat is `Game.inventoryUse()`; the Flask build gained
   ticks, and the inventory refusal panel rendered correctly
 - Browser (Flask): same flows through the new routes, no console errors
 
+## Off-Hand Attacks & the Dice Tray
+
+Two combat features, mirrored across all three builds. The off-hand finally
+does something with a weapon in it, and the player can see what they are about
+to roll before committing the turn.
+
+### 1. A weapon in the off-hand gets its own attack
+
+While a weapon sits in the off-hand, the combat menu grows an **Off-hand Attack**
+option directly after Attack:
+
+| Equipped | Combat options |
+|---|---|
+| no off-hand weapon | Attack / Use Item / Flee |
+| off-hand weapon | Attack / **Off-hand Attack** / Use Item / Flee |
+| off-hand **shield** | Attack / Use Item / Flee (a shield is not a weapon) |
+
+**It is a whole turn of its own.** Swinging costs you the main-hand attack and
+the monster retaliates, which makes it a real choice rather than a free bonus:
+roughly 40-60% extra output per round if you survive the response.
+
+**Damage is half.** Half of (dice + ability modifier), rounded down, never less
+than 1, and never carrying the two-handed bonus:
+
+| | Main hand | Off-hand |
+|---|---|---|
+| Hit roll | `1d20 + prof + mod` | same |
+| Damage | `dice + mod + two-handed` | `floor((dice + mod) / 2)` |
+
+The off-hand still applies its weapon's **damage type** and **element**, so a
+Venom Dagger in the off-hand can still poison — just more slowly.
+
+**The bug this introduced, and the fix:** the option list grows, so every index
+after it shifts. Rather than hard-coding `Use Item` at index 1, both builds now
+resolve the indices by position (`OPT_USE = hasOff ? 2 : 1`). Getting that wrong
+would have made "Use Item" fire the off-hand attack.
+
+### 2. The dice tray
+
+On the player's turn a tray appears above the screen showing the dice for every
+attack available, each with a **Roll** button:
+
+```
+YOUR TURN — vs Wolf (AC 13)
+  [d20]  Dagger            to hit: 1d20 +2  ·  damage: 1d4 +2        [Roll]
+  [d20]  Off-hand Dagger   to hit: 1d20 +2  ·  half damage: 1d4 +1   [Roll]
+```
+
+Pressing Roll tumbles the dice (four quick face changes over about half a
+second) and then commits the attack. Two details worth stating plainly:
+
+- **The animation is theatre.** The roll is decided by the game logic, not the
+  browser; the tray never invents a number. The authoritative result appears in
+  the combat log a moment later, which is the one that counts.
+- **What it guarantees is information.** You can see the die, the weapon and the
+  exact modifier before you spend the turn, so a bad roll never feels arbitrary.
+
+The dice are drawn as CSS — pips on a rounded square for the damage dice, and a
+circular d20 showing its own number (20 pips would be unreadable). No image
+assets, no new files, and it scales with the layout.
+
+Data comes from a new `attacks` array on the combat payload, built by
+`attack_roll_info()` / `attackRollInfo()` so the two UIs cannot disagree about
+what is about to be rolled.
+
+### Bug found by the tests, not by playing
+
+`Player.calc_ac()` read `self.offhand.armor_type` directly. That is fine for a
+shield and a crash for a Weapon — and **it only crashed in Python**. In
+JavaScript a Weapon has no `armor_type`, so the property is `undefined` and
+`undefined === "shield"` is quietly false.
+
+So the moment a weapon could legally go in the off-hand, the Flask build threw
+`AttributeError: 'Weapon' object has no attribute 'armor_type'` on every single
+AC calculation, while the PWA carried on. Fixed with `getattr(..., None)`, and
+it is a good argument for keeping the test suites mirrored: the JS side was
+always going to pass.
+
+### Files changed
+- `js/game.js` — `profBonus()`, `hasOffhandWeapon()`, `weaponMod()`,
+  `attackRollInfo()`, `webOffhandAttack()`, `combatRollPayload()`, index-based
+  option resolution, `attacks` payload
+- `game_server.py` — the same five helpers plus `web_offhand_attack()` and the
+  `attacks` payload
+- `combat.py` — `has_offhand_weapon()`, `combat_options()`, `offhand_attack()`,
+  `weapon_mod()`; Flee index now resolved by position
+- `player.py` — `calc_ac()` uses `getattr` for the off-hand's `armor_type`
+- `index.html` — dice tray markup, CSS die faces and tumble animation,
+  `renderDiceTray()`, `doRoll()`
+- `templates/index.html` — the same tray and animation
+
+### Verification
+- Node suite: **213 passing** (up from 189) — the option appearing, disappearing
+  when the off-hand empties, and staying absent for a shield; the tray carrying
+  one or two rows; the off-hand damage bonus being exactly half the main hand's
+  for the same weapon in both hands; the swing costing a turn and the enemy still
+  retaliating
+- Flask suite: **87 checks passing** (up from 65), plus the three legacy suites
+  still green
+- Browser: pressed Roll on a live fight — dice tumbled, the button disabled
+  itself during the animation, the attack resolved (Zombie 22 → 18 HP with
+  *WEAK to piercing x1.5*) and the monster retaliated. With a Longsword and a
+  Shortsword the tray read `1d8 +5` and `half damage: 1d6 +2`
+
 ## To Do
 - **Fighter starts unable to use a shield** — the starting Longsword is two-handed, so the
   class has to switch weapons before it can hold one. Decide whether to make the
   Longsword one-handed or give Fighter a different opener
 - **Check the two-handed vs one-handed math** — the +1 sits on top of 2d6, so compare a
   Greatsword against a Longsword+Dagger before settling on which is strictly better
-- **No off-hand attack** — a second weapon and a shield both raise survivability, but the
-  off-hand weapon adds no damage, no bonus and no extra attack
+- **Off-hand weapons are now worth it, but only as a second swing** — half damage per
+  hit, no off-hand attack bonus and no minimum die roll, so a shield is still the
+  safer pick for a new character. Worth revisiting once characters reach the
+  levels where a second swing per round actually decides fights
 - **Status effects only work on monsters** — burning, freezing and poisoning are all one-directional;
   nothing reflects back at the player yet
 - **Element scaling is uncapped** — INT and DEX have no ceiling on burn damage or poison chance,

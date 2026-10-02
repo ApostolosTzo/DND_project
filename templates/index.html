@@ -130,6 +130,52 @@
         .inv-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
         .inv-blocked { color: #e74c3c; font-size: 0.8em; margin-top: 8px; }
         .combat-item-disabled { color: #6a6a70; }
+        /* ---------- Dice tray ---------- */
+        #dice-tray {
+            display: none; background: #151517; border: 1px solid #2e2e33;
+            border-radius: 8px; padding: 12px; margin-bottom: 15px;
+        }
+        #dice-tray.on { display: block; }
+        .dice-tray-title {
+            color: #c9a84c; font-size: 0.8em; letter-spacing: 1px;
+            text-transform: uppercase; margin-bottom: 10px;
+        }
+        .dice-row {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            padding: 8px 0; border-top: 1px solid #242428;
+        }
+        .dice-row:first-of-type { border-top: none; }
+        .dice-group { display: flex; gap: 6px; align-items: center; }
+        .die {
+            width: 34px; height: 34px; border-radius: 6px; background: #f0ece0;
+            border: 1px solid #b9b2a0; display: grid; grid-template: repeat(3,1fr) / repeat(3,1fr);
+            padding: 4px; gap: 1px; box-shadow: 0 2px 0 #7a7466;
+        }
+        .die.d20 {
+            border-radius: 50%; width: 38px; height: 38px; display: grid;
+            place-items: center; color: #1a1a1c; font-size: 13px; font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+        .die .pip { width: 5px; height: 5px; border-radius: 50%; background: #1a1a1c; }
+        .die .pip.off { background: transparent; }
+        .die.rolling { animation: die-tumble .5s ease-in-out; }
+        @keyframes die-tumble {
+            0%   { transform: rotate(0deg) scale(1); }
+            25%  { transform: rotate(-140deg) scale(1.25); }
+            50%  { transform: rotate(110deg) scale(.9); }
+            75%  { transform: rotate(-50deg) scale(1.15); }
+            100% { transform: rotate(0deg) scale(1); }
+        }
+        .dice-info { flex: 1; min-width: 130px; }
+        .dice-label { color: #d6d6d6; font-size: 0.9em; }
+        .dice-label .off-tag { color: #c9a84c; font-size: 0.85em; }
+        .dice-formula { color: #8a8a8a; font-size: 0.78em; margin-top: 2px; }
+        .roll-btn {
+            background: #c9a84c; color: #0b0b0c; border: none; padding: 10px 26px;
+            font-family: 'Courier New', monospace; font-size: 0.95em; cursor: pointer;
+            border-radius: 4px; min-height: 44px;
+        }
+        .roll-btn:disabled { background: #2e2e33; color: #8a8a8a; cursor: wait; }
         #log {
             margin-top: 15px;
             padding: 10px;
@@ -214,6 +260,7 @@
                 <button id="back-btn" data-back="1">&larr; Back</button>
                 <div id="screen-title"></div>
             </div>
+            <div id="dice-tray"></div>
             <div id="screen-body"></div>
             <div id="options"></div>
             <div id="log"></div>
@@ -584,6 +631,145 @@ function backIndexFor(s) {
     return /^\((Back|Close)\)/i.test(last) ? s.options.length - 1 : -1;
 }
 
+// -----------------------------
+// Dice tray
+// -----------------------------
+// Shows the dice for each attack the player may make this turn, with a Roll
+// button. The roll itself is decided by the server; the animation is theatre
+// and the authoritative number lands in the combat log right after.
+
+const PIP_LAYOUT = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8]
+};
+
+function dieEl(sides, value) {
+    const el = document.createElement("div");
+    el.className = "die";
+    const shown = value ? ((value - 1) % sides) + 1 : 1;
+    const on = PIP_LAYOUT[shown] || PIP_LAYOUT[1];
+    for (let i = 0; i < 9; i++) {
+        const pip = document.createElement("span");
+        pip.className = "pip" + (on.indexOf(i) === -1 ? " off" : "");
+        el.appendChild(pip);
+    }
+    return el;
+}
+
+function d20El(value) {
+    const el = document.createElement("div");
+    el.className = "die d20";
+    el.textContent = value ? String(value) : "?";
+    return el;
+}
+
+function diceGroup(sides) {
+    const wrap = document.createElement("div");
+    wrap.className = "dice-group";
+    if (sides === 20) {
+        wrap.appendChild(d20El(0));
+    } else {
+        for (let i = 0; i < Math.min(sides, 3); i++) wrap.appendChild(dieEl(sides, 0));
+    }
+    const tag = document.createElement("span");
+    tag.className = "dice-formula";
+    tag.textContent = "d" + sides;
+    wrap.appendChild(tag);
+    return wrap;
+}
+
+function diceParts(expr) {
+    const m = /^(\d*)d(\d+)$/.exec(String(expr || "").trim());
+    if (!m) return { count: 1, sides: 6, valid: false };
+    return { count: parseInt(m[1] || "1", 10), sides: parseInt(m[2], 10), valid: true };
+}
+
+function signed(n) {
+    return (n >= 0 ? "+" : "") + n;
+}
+
+let trayBusy = false;
+
+function renderDiceTray(s) {
+    const tray = document.getElementById("dice-tray");
+    const attacks = s.attacks || [];
+    if (!(s.screen === "combat" && attacks.length)) {
+        tray.classList.remove("on");
+        tray.innerHTML = "";
+        return;
+    }
+
+    tray.classList.add("on");
+    tray.innerHTML = "";
+
+    const title = document.createElement("div");
+    title.className = "dice-tray-title";
+    title.textContent = "Your turn" + (s.enemy ? " \u2014 vs " + s.enemy.name + " (AC " + s.enemy.ac + ")" : "");
+    tray.appendChild(title);
+
+    attacks.forEach((atk, i) => {
+        const row = document.createElement("div");
+        row.className = "dice-row";
+        row.appendChild(diceGroup(diceParts(atk.hit_die).sides));
+
+        const info = document.createElement("div");
+        info.className = "dice-info";
+        const label = document.createElement("div");
+        label.className = "dice-label";
+        label.textContent = (atk.offhand ? "Off-hand " : "") + atk.weapon;
+        const formula = document.createElement("div");
+        formula.className = "dice-formula";
+        const dp = diceParts(atk.damage_die);
+        formula.textContent = "to hit: " + atk.hit_die + " " + signed(atk.hit_bonus) +
+            "   \u00b7   " + (atk.offhand ? "half damage: " : "damage: ") +
+            (dp.valid ? dp.count + "d" + dp.sides : "?") + " " + signed(atk.damage_bonus);
+        info.appendChild(label);
+        info.appendChild(formula);
+        row.appendChild(info);
+
+        const roll = document.createElement("button");
+        roll.className = "roll-btn";
+        roll.textContent = "Roll";
+        roll.addEventListener("click", () => doRoll(i, roll));
+        row.appendChild(roll);
+
+        tray.appendChild(row);
+    });
+}
+
+function doRoll(index) {
+    if (trayBusy) return;
+    trayBusy = true;
+    const tray = document.getElementById("dice-tray");
+    tray.querySelectorAll(".roll-btn").forEach((b) => { b.disabled = true; });
+
+    const dice = tray.querySelectorAll(".dice-row")[index].querySelectorAll(".die");
+    let ticks = 0;
+    const tumble = setInterval(() => {
+        ticks++;
+        dice.forEach((d) => {
+            if (d.classList.contains("d20")) {
+                d.textContent = String(1 + Math.floor(Math.random() * 20));
+            } else {
+                d.innerHTML = dieEl(6, 1 + Math.floor(Math.random() * 6)).innerHTML;
+            }
+            d.classList.add("rolling");
+        });
+        if (ticks >= 4) clearInterval(tumble);
+    }, 110);
+
+    setTimeout(() => {
+        clearInterval(tumble);
+        dice.forEach((d) => d.classList.remove("rolling"));
+        trayBusy = false;
+        doAction(index);
+    }, 560);
+}
+
 function renderOptions(s) {
     const opts = document.getElementById("options");
     opts.innerHTML = "";
@@ -791,6 +977,7 @@ function render(s) {
     }
 
     renderOptions(s);
+    renderDiceTray(s);
 
     // Log
     const log = document.getElementById("log");

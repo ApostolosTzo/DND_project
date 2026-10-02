@@ -85,7 +85,9 @@ class Player:
         else:
             ac = 10 + self.modifier("DEX")
         # Only a shield in the off-hand adds AC. A second weapon is dead weight.
-        if self.offhand and self.offhand.armor_type == "shield":
+        # getattr, not attribute access: a Weapon has no armor_type at all, and
+        # the off-hand accepts either kind.
+        if self.offhand and getattr(self.offhand, "armor_type", None) == "shield":
             ac += self.offhand.base_ac
         return ac
 

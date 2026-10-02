@@ -288,15 +288,63 @@ def town_action(choice):
 #==============================
 # ---- Combat ----
 #=============================
+def prof_bonus(p):
+    """Proficiency bonus, shared by the main-hand and off-hand rolls."""
+    return (p.level - 1) // 4 + 2
+
+# Half damage, rounded down, never less than 1.
+OFFHAND_DAMAGE_DIVISOR = 2
+
+def has_offhand_weapon(p):
+    """A weapon in the off-hand gets its own attack this turn.
+
+    A shield is not a weapon, so it contributes no extra swing.
+    """
+    return bool(p and p.offhand and p.offhand.category == "weapon")
+
+def weapon_mod(p, weapon):
+    """Which stat an attack with this weapon uses."""
+    if weapon and ("finesse" in weapon.properties or "ranged" in weapon.properties):
+        return p.modifier("DEX")
+    return p.modifier("STR")
+
+def attack_roll_info(p, weapon, is_offhand):
+    """One line of "what am I about to roll", used by the dice tray."""
+    mod = weapon_mod(p, weapon)
+    full = mod + (0 if is_offhand else two_handed_bonus(weapon))
+    return {
+        "label": "Off-hand Attack" if is_offhand else "Attack",
+        "weapon": weapon.name if weapon else "Bare hands",
+        "hit_die": "1d20",
+        "hit_bonus": prof_bonus(p) + mod,
+        "mod": mod,
+        "damage_die": weapon.damage_dice if weapon else "1",
+        # Only the off-hand is halved - the main hand keeps its full bonus.
+        "damage_bonus": (full // OFFHAND_DAMAGE_DIVISOR if is_offhand else full),
+        "type": damage_type(weapon.damage_type) if weapon else None,
+        "offhand": bool(is_offhand),
+    }
+
 def combat_state():
     e = gs["enemy"]
     p = gs["player"]
     status = e.status_text()
     header = e.display() + (f"\n{status}" if status else "")
     body = f"{header}\n\n{player_json(p)['name']}: HP {p.hp}/{p.max_hp}  AC {p.ac}"
-    if gs["dungeon_floor"] > 0:
-        return respond("combat", "COMBAT", body, ["Attack", "Use Item"])
-    return respond("combat", "COMBAT", body, ["Attack", "Use Item", "Flee"])
+
+    options = ["Attack"]
+    if has_offhand_weapon(p):
+        options.append("Off-hand Attack")
+    options.append("Use Item")
+    if gs["dungeon_floor"] == 0:
+        options.append("Flee")
+
+    # Everything the dice tray needs to show the pending rolls.
+    attacks = [attack_roll_info(p, p.weapon, False)]
+    if has_offhand_weapon(p):
+        attacks.append(attack_roll_info(p, p.offhand, True))
+
+    return respond("combat", "COMBAT", body, options, extra={"attacks": attacks})
 
 
 def combat_item_list(p):
@@ -364,11 +412,18 @@ def combat_action(choice):
     p = gs["player"]
     e = gs["enemy"]
 
-    # Attack
-    if choice == 0:  
+    # The option list grows when an off-hand weapon is held, so the indices
+    # are resolved by position rather than hard-coded.
+    has_off = has_offhand_weapon(p)
+    opt_use = 2 if has_off else 1
+    opt_flee = 3 if has_off else 2
+
+    # Attack / Off-hand Attack - both cost the whole turn.
+    if choice == 0 or (has_off and choice == 1):
+        is_offhand = has_off and choice == 1
         # The combat log accumulates: every exchange stays visible in the chat.
-        result = web_player_attack(p, e)
-        gs["log"].append(result)
+        gs["log"].append(web_offhand_attack(p, e) if is_offhand
+                          else web_player_attack(p, e))
 
         if not e.is_alive():
             return combat_reward("Victory!")
@@ -378,28 +433,29 @@ def combat_action(choice):
             gs["log"].append(line)
         if not p.is_alive():
             gs["screen"] = "game_over"
-            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
+            return respond("game_over", "GAME OVER", "You have died...",
+                           ["Return to Menu"])
         if not e.is_alive():
             return combat_reward("Victory!")
 
-        result2 = web_enemy_attack(p, e)
-        gs["log"].append(result2)
+        gs["log"].append(web_enemy_attack(p, e))
 
         if not p.is_alive():
             gs["screen"] = "game_over"
-            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
+            return respond("game_over", "GAME OVER", "You have died...",
+                           ["Return to Menu"])
 
         return combat_state()
-    
+
     # Use Item
-    elif choice == 1:  
+    elif choice == opt_use:
         if not combat_item_list(p):
             gs["log"].append("You have nothing to use!")
             return combat_state()
         return combat_item_state()
 
     # Flee (not allowed in dungeon)
-    elif choice == 2:
+    elif choice == opt_flee:
         if gs["dungeon_floor"] > 0:
             gs["log"].append("You cannot flee from the dungeon!")
             return combat_state()
@@ -407,14 +463,16 @@ def combat_action(choice):
             gs["enemy"] = None
             gs["screen"] = "town"
             gs["log"] = ["You fled successfully!"]
-            return respond("town", "Fled!", "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
+            return respond("town", "Fled!", "What do you want to do?",
+                           ["Fight", "Visit Shop", "Inventory", "Save Game",
+                            "Quests", "Quit"])
         else:
             gs["log"].append("Failed to flee!")
-            result2 = web_enemy_attack(p, e)
-            gs["log"].append(result2)
+            gs["log"].append(web_enemy_attack(p, e))
             if not p.is_alive():
                 gs["screen"] = "game_over"
-                return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
+                return respond("game_over", "GAME OVER", "You have died...",
+                               ["Return to Menu"])
             return combat_state()
 
     return combat_state()
@@ -431,17 +489,17 @@ def combat_item_action(choice):
         gs["screen"] = "combat"
         return combat_state()
 
-    message = use_item_in_combat(p, entries[choice]["name"])
+    name = entries[choice]["name"]
+    message = use_item_in_combat(p, name)
     gs["log"].append(message)
 
-    if heal_amount(entries[choice]["name"]):
+    if heal_amount(name):
         if not e.is_alive():
             return combat_reward("Victory!")
         return combat_item_state()
 
     # Unusable: it costs you the turn.
-    result2 = web_enemy_attack(p, e)
-    gs["log"].append(result2)
+    gs["log"].append(web_enemy_attack(p, e))
 
     if not p.is_alive():
         gs["screen"] = "game_over"
@@ -451,14 +509,8 @@ def combat_item_action(choice):
 
 # Player Attack
 def web_player_attack(p, e):
-    if p.weapon and "finesse" in p.weapon.properties:
-        mod = p.modifier("DEX")
-    elif p.weapon and "ranged" in p.weapon.properties:
-        mod = p.modifier("DEX")
-    else:
-        mod = p.modifier("STR")
-
-    prof = (p.level - 1) // 4 + 2
+    mod = weapon_mod(p, p.weapon)
+    prof = prof_bonus(p)
     atk = roll("1d20") + prof + mod
 
     if atk >= e.ac:
@@ -479,6 +531,32 @@ def web_player_attack(p, e):
         return line + effect
     else:
         return f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
+
+# Off-hand Attack
+def web_offhand_attack(p, e):
+    """The off-hand swing: its own hit roll, half damage.
+
+    It is a whole turn of its own, so using it gives up the main-hand attack and
+    lets the monster retaliate.
+    """
+    w = p.offhand
+    mod = weapon_mod(p, w)
+    prof = prof_bonus(p)
+    atk = roll("1d20") + prof + mod
+
+    if atk >= e.ac:
+        # Half of (dice + modifier), rounded down, never less than 1. The
+        # two-handed bonus is deliberately absent - it cannot be held anyway.
+        full = max(roll(w.damage_dice) + mod, 1)
+        dmg = max(full // OFFHAND_DAMAGE_DIVISOR, 1)
+        type_name = damage_type(w.damage_type)
+        total, note = e.apply_damage(dmg, type_name)
+        effect = e.inflict_element(element_of(w), p)
+        return (f"Off-hand {w.name} hits the {e.name} for {total} damage!{note} "
+                f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac}, half damage)"
+                + effect)
+
+    return f"Off-hand {w.name} missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
 
 # Enemy Attack
 def web_enemy_attack(p, e):
