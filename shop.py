@@ -28,8 +28,27 @@ SHOP_NPCS = {
         "items": {
             "Healing Potion": {"price": 15, "min_level": 1},
             "Greater Healing Potion": {"price": 50, "min_level": 5},
+            "Superior Healing Potion": {"price": 300, "min_level": 15},
+            "Grand Healing Potion": {"price": 1500, "min_level": 35},
+            "Ultimate Healing Potion": {"price": 8000, "min_level": 70},
             #"Mana Potion": {"price": 30, "min_level": 3},
             #"Antidote": {"price": 20, "min_level": 1},
+        }
+    },
+    # Every shield in the game is sold here and nowhere else.
+    "Shield Smith": {
+        "items": {
+            "Buckler": {"price": 20, "min_level": 1},
+            "Shield": {"price": 25, "min_level": 1},
+            "Iron Shield": {"price": 55, "min_level": 2},
+            "Bronze Shield": {"price": 45, "min_level": 2},
+            "Tower Shield": {"price": 90, "min_level": 4},
+            "Runed Shield": {"price": 150, "min_level": 5},
+            "Magic Shield": {"price": 210, "min_level": 6},
+            "Warden's Bulwark": {"price": 340, "min_level": 8},
+            "Bulwark of Dawn": {"price": 480, "min_level": 10},
+            "Dragon Shield": {"price": 620, "min_level": 11},
+            "Aegis Shield": {"price": 900, "min_level": 13},
         }
     },
     "Weaponsmith": {
@@ -61,6 +80,7 @@ SHOP_NPCS = {
             "Anchor": {"price": 60, "min_level": 3},
             "Executioner's Axe": {"price": 100, "min_level": 5},
             "Viper Fang": {"price": 80, "min_level": 4},
+            "Venom Dagger": {"price": 95, "min_level": 5},
 
             "Shortsword": {"price": 25, "min_level": 1},
             "Sabre": {"price": 45, "min_level": 2},
@@ -150,7 +170,6 @@ SHOP_NPCS = {
             "Breastplate": {"price": 150, "min_level": 3},
             "Half Plate": {"price": 200, "min_level": 4},
             "Ring Mail": {"price": 80, "min_level": 1},
-            "Shield": {"price": 25, "min_level": 1},
             "Plate": {"price": 300, "min_level": 4},
             "Splint": {"price": 350, "min_level": 5},
             "Titanium": {"price": 500, "min_level": 7},
@@ -180,11 +199,6 @@ SHOP_NPCS = {
             "Titanforged Plate": {"price": 640, "min_level": 9},
             "Barrier Plate": {"price": 900, "min_level": 11},
             "Ancient Scale Plate": {"price": 1100, "min_level": 12},
-            "Buckler": {"price": 20, "min_level": 1},
-            "Bronze Shield": {"price": 45, "min_level": 2},
-            "Runed Shield": {"price": 150, "min_level": 5},
-            "Warden's Bulwark": {"price": 340, "min_level": 8},
-            "Bulwark of Dawn": {"price": 480, "min_level": 10},
 
             "Padded Armor": {"price": 25, "min_level": 1},
             "Nomad Leather": {"price": 40, "min_level": 2},
@@ -211,11 +225,6 @@ SHOP_NPCS = {
             "Titanforged Plate": {"price": 640, "min_level": 9},
             "Barrier Plate": {"price": 900, "min_level": 11},
             "Ancient Scale Plate": {"price": 1100, "min_level": 12},
-            "Buckler": {"price": 20, "min_level": 1},
-            "Bronze Shield": {"price": 45, "min_level": 2},
-            "Runed Shield": {"price": 150, "min_level": 5},
-            "Warden's Bulwark": {"price": 340, "min_level": 8},
-            "Bulwark of Dawn": {"price": 480, "min_level": 10},
 
             "Padded Armor": {"price": 25, "min_level": 1},
             "Nomad Leather": {"price": 40, "min_level": 2},
@@ -242,11 +251,6 @@ SHOP_NPCS = {
             "Titanforged Plate": {"price": 640, "min_level": 9},
             "Barrier Plate": {"price": 900, "min_level": 11},
             "Ancient Scale Plate": {"price": 1100, "min_level": 12},
-            "Buckler": {"price": 20, "min_level": 1},
-            "Bronze Shield": {"price": 45, "min_level": 2},
-            "Runed Shield": {"price": 150, "min_level": 5},
-            "Warden's Bulwark": {"price": 340, "min_level": 8},
-            "Bulwark of Dawn": {"price": 480, "min_level": 10},
 
             "Padded Armor": {"price": 25, "min_level": 1},
             "Nomad Leather": {"price": 40, "min_level": 2},
@@ -273,11 +277,6 @@ SHOP_NPCS = {
             "Titanforged Plate": {"price": 640, "min_level": 9},
             "Barrier Plate": {"price": 900, "min_level": 11},
             "Ancient Scale Plate": {"price": 1100, "min_level": 12},
-            "Buckler": {"price": 20, "min_level": 1},
-            "Bronze Shield": {"price": 45, "min_level": 2},
-            "Runed Shield": {"price": 150, "min_level": 5},
-            "Warden's Bulwark": {"price": 340, "min_level": 8},
-            "Bulwark of Dawn": {"price": 480, "min_level": 10},
 
             "Padded Armor": {"price": 25, "min_level": 1},
             "Nomad Leather": {"price": 40, "min_level": 2},
@@ -304,11 +303,6 @@ SHOP_NPCS = {
             "Titanforged Plate": {"price": 640, "min_level": 9},
             "Barrier Plate": {"price": 900, "min_level": 11},
             "Ancient Scale Plate": {"price": 1100, "min_level": 12},
-            "Buckler": {"price": 20, "min_level": 1},
-            "Bronze Shield": {"price": 45, "min_level": 2},
-            "Runed Shield": {"price": 150, "min_level": 5},
-            "Warden's Bulwark": {"price": 340, "min_level": 8},
-            "Bulwark of Dawn": {"price": 480, "min_level": 10},
 
 }
     },
@@ -373,6 +367,7 @@ SHOP_NPCS = {
             "Storm Wand": {"price": 200, "min_level": 6},
             "Bone Wand": {"price": 150, "min_level": 5},
             "Runed Dagger": {"price": 150, "min_level": 5},
+            "Plasma Wand": {"price": 230, "min_level": 6},
 
             "Ember Blade": {"price": 180, "min_level": 5},
             "Frost Staff": {"price": 340, "min_level": 8},
@@ -419,7 +414,7 @@ def open_shop(player, shop_name):
         for item in player.inventory:
             storage_counts[item.name] = storage_counts.get(item.name, 0) + 1
         # Also count equipped items in storage counts for display purposes.
-        for eq in [player.weapon, player.armor, player.shield]:
+        for eq in [player.weapon, player.armor, player.offhand]:
             if eq:
                 storage_counts[eq.name] = storage_counts.get(eq.name, 0) + 1
 

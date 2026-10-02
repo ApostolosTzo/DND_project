@@ -36,7 +36,7 @@ function saveGame(player, save_name) {
         max_hp: player.max_hp,
         weapon: player.weapon ? player.weapon.name : null,
         armor: player.armor ? player.armor.name : null,
-        shield: player.shield ? player.shield.name : null,
+        offhand: player.offhand ? player.offhand.name : null,
         inventory: player.inventory.map((item) => item.name),
         skill_points: player.skill_points
     };
@@ -65,8 +65,18 @@ function loadGame(save_name) {
     player.inventory = [];
     if (data.weapon) player.equip_weapon(createItem(data.weapon));
     if (data.armor) player.equip_armor(createItem(data.armor));
-    if (data.shield) {
-        player.shield = createItem(data.shield);
+    // Saves written before the off-hand existed have no `offhand` key at all,
+    // which is why this falls back to the old `shield` slot.
+    const offhandName = data.offhand !== undefined ? data.offhand : data.shield;
+    if (offhandName) {
+        const offhand = createItem(offhandName);
+        // A two-handed weapon in the same save would make this illegal; equip
+        // the weapon first and let equip_weapon() free the hand instead.
+        if (offhand && player.weapon && isTwoHanded(player.weapon)) {
+            player.inventory.push(offhand);
+        } else if (offhand) {
+            player.equip_offhand(offhand);
+        }
         player.ac = player.calc_ac();
     }
     (data.inventory || []).forEach((item_name) => player.add_item(createItem(item_name)));

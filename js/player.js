@@ -26,7 +26,7 @@ function Player(name, race, class_name, stats) {
     // Equipment must exist before any calculation reads it.
     this.weapon = null;
     this.armor = null;
-    this.shield = null;
+    this.offhand = null;
     this.max_hp = CLASSES[class_name].hp + this.modifier("CON");
     this.hp = this.max_hp;
     this.inventory = [];
@@ -38,7 +38,7 @@ function Player(name, race, class_name, stats) {
 
 Player.prototype.get_equipment_stat_bonus = function () {
     const bonus = {};
-    [this.weapon, this.armor, this.shield].forEach((item) => {
+    [this.weapon, this.armor, this.offhand].forEach((item) => {
         if (item) {
             for (const stat in item.stats_bonus) {
                 bonus[stat] = (bonus[stat] || 0) + item.stats_bonus[stat];
@@ -73,8 +73,9 @@ Player.prototype.calc_ac = function () {
     } else {
         ac = 10 + this.modifier("DEX");
     }
-    if (this.shield) {
-        ac += this.shield.base_ac;
+    // Only a shield in the off-hand adds AC. A second weapon is dead weight.
+    if (this.offhand && this.offhand.armor_type === "shield") {
+        ac += this.offhand.base_ac;
     }
     return ac;
 };
@@ -91,9 +92,64 @@ Player.prototype.recalc_hp = function () {
     }
 };
 
+// True when both hands are already spoken for: either a two-handed weapon is
+// equipped, or the off-hand slot is occupied. This is the single check the UI
+// and the inventory both ask before handing over a second item.
+Player.prototype.hands_full = function () {
+    return isTwoHanded(this.weapon) || this.offhand !== null;
+};
+
+// Why the off-hand is unavailable, for the UI to explain the refusal.
+Player.prototype.offhand_block_reason = function () {
+    if (isTwoHanded(this.weapon)) {
+        return this.weapon.name + " is two-handed - it needs both hands.";
+    }
+    if (this.offhand) {
+        return "Your off-hand already holds " + this.offhand.name + ".";
+    }
+    return "";
+};
+
+// Shields and one-handed weapons are allowed in the off-hand; a two-handed
+// weapon never is. A shield is refused outright while a two-handed weapon is
+// equipped, which is the rule the player asked for.
+Player.prototype.can_equip_offhand = function (item) {
+    if (!item) return false;
+    if (isTwoHanded(this.weapon)) return false;
+    if (isTwoHanded(item)) return false;
+    return true;
+};
+
+// Stows the current off-hand back in the bag and returns it, or null.
+Player.prototype.stow_offhand = function () {
+    const old = this.offhand;
+    if (old) {
+        this.offhand = null;
+        this.inventory.push(old);
+    }
+    this.ac = this.calc_ac();
+    return old;
+};
+
+// Equipping a two-handed weapon gives the off-hand back automatically rather
+// than silently dropping it or leaving an illegal shield equipped.
 Player.prototype.equip_weapon = function (weapon) {
     this.weapon = weapon;
+    if (isTwoHanded(weapon)) {
+        this.stow_offhand();
+    } else {
+        this.ac = this.calc_ac();
+    }
     this.recalc_hp();
+};
+
+Player.prototype.equip_offhand = function (item) {
+    if (!this.can_equip_offhand(item)) return false;
+    this.stow_offhand();
+    this.offhand = item;
+    this.ac = this.calc_ac();
+    this.recalc_hp();
+    return true;
 };
 
 Player.prototype.equip_armor = function (armor) {
@@ -150,6 +206,7 @@ Player.prototype.sheet = function () {
     lines.push("Gold:  " + this.gold);
     lines.push("Weapon: " + (this.weapon ? this.weapon.name : "None"));
     lines.push("Armor:  " + (this.armor ? this.armor.name : "None"));
+    lines.push("Offhand: " + (this.offhand ? this.offhand.name : "None"));
     lines.push("");
     STAT_ORDER.forEach((s) => {
         const mod = this.modifier(s);

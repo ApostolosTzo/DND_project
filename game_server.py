@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from player import Player, create_character, make_character, STAT_ORDER, CLASSES, RACES
-from items import ITEMS, create_item, get_item, is_material
+from items import (ITEMS, create_item, get_item, is_material, is_potion, heal_amount,
+                   is_two_handed, two_handed_bonus, damage_type, element_of)
 from enemy import generate_enemy, generate_dungeon_enemy
 from dice import roll
 from save_load import save_game, load_game, list_saves, save_exists
@@ -49,6 +50,8 @@ def player_json(p):
         "xp_to_next": p.xp_to_next(),
         "weapon": p.weapon.name if p.weapon else "None",
         "armor": p.armor.name if p.armor else "None",
+        "offhand": p.offhand.name if p.offhand else "None",
+        "hands_full": p.hands_full(),
         "stats": p.stats,
         "effective_stats": p.effective_stats(),
         "stat_bonuses": p.get_equipment_stat_bonus(),
@@ -288,10 +291,74 @@ def town_action(choice):
 def combat_state():
     e = gs["enemy"]
     p = gs["player"]
-    body = f"{e.display()}\n\n{player_json(p)['name']}: HP {p.hp}/{p.max_hp}  AC {p.ac}"
+    status = e.status_text()
+    header = e.display() + (f"\n{status}" if status else "")
+    body = f"{header}\n\n{player_json(p)['name']}: HP {p.hp}/{p.max_hp}  AC {p.ac}"
     if gs["dungeon_floor"] > 0:
         return respond("combat", "COMBAT", body, ["Attack", "Use Item"])
     return respond("combat", "COMBAT", body, ["Attack", "Use Item", "Flee"])
+
+
+def combat_item_list(p):
+    """Everything the player could reach for mid-fight, best potion first.
+
+    Quest materials and other drops used to be hidden here, which made the list
+    look empty right after a monster dropped something useful.
+    """
+    counts = {}
+    for item in p.inventory:
+        if item in (p.weapon, p.armor, p.offhand):
+            continue
+        counts.setdefault(item.name, []).append(item)
+
+    entries = [{"name": name,
+                "count": len(list_),
+                "heal": heal_amount(name) if is_potion(name) else 0}
+               for name, list_ in counts.items()]
+
+    def sort_key(entry):
+        # Usable healing first, strongest first; then alphabetical so the list
+        # does not jump around between turns.
+        if entry["heal"]:
+            return (0, -entry["heal"], entry["name"])
+        return (1, 0, entry["name"])
+
+    return sorted(entries, key=sort_key)
+
+
+def combat_item_label(entry):
+    return f"{entry['name']} x{entry['count']}" if entry["count"] > 1 else entry["name"]
+
+
+def use_item_in_combat(p, name):
+    """Only healing potions work in combat; everything else is refused."""
+    heal = heal_amount(name)
+    if not heal:
+        return f"Cannot use {name} in combat yet."
+    index = next((i for i, item in enumerate(p.inventory) if item.name == name), None)
+    if index is None:
+        return f"You don't have {name} any more."
+    before = p.hp
+    p.hp = min(p.hp + heal, p.max_hp)
+    p.inventory.pop(index)
+    return f"Drank {name}! Restored {p.hp - before} HP ({heal} attempted)."
+
+
+def combat_item_state():
+    """The Use Item screen, rebuilt from scratch after every use."""
+    p = gs["player"]
+    entries = combat_item_list(p)
+    if not entries:
+        gs["log"].append("You have nothing left to use.")
+        return combat_state()
+    options = [combat_item_label(e) for e in entries] + ["(Back)"]
+    gs["screen"] = "combat_item"
+    return respond("combat_item", "Use Item",
+                   "Choose an item - strongest healing potion first. Items that "
+                   "cannot be used in combat yet are listed greyed out.",
+                   options,
+                   {"combat_items": [e["name"] for e in entries]})
+
 
 def combat_action(choice):
     p = gs["player"]
@@ -306,6 +373,15 @@ def combat_action(choice):
         if not e.is_alive():
             return combat_reward("Victory!")
 
+        # Burn and poison bite before the monster gets to swing back.
+        for line in e.tick_status():
+            gs["log"].append(line)
+        if not p.is_alive():
+            gs["screen"] = "game_over"
+            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
+        if not e.is_alive():
+            return combat_reward("Victory!")
+
         result2 = web_enemy_attack(p, e)
         gs["log"].append(result2)
 
@@ -317,18 +393,10 @@ def combat_action(choice):
     
     # Use Item
     elif choice == 1:  
-        consumables = [item for item in p.inventory if item.category == "item" and item != p.weapon and item != p.armor and item != p.shield]
-        if not consumables:
-            gs["log"].append("No potions to use!")
+        if not combat_item_list(p):
+            gs["log"].append("You have nothing to use!")
             return combat_state()
-
-        grouped = {}
-        for item in consumables:
-            grouped.setdefault(item.name, []).append(item)
-        names = list(grouped.keys())
-        options = [f"{n} x{len(grouped[n])}" if len(grouped[n]) > 1 else n for n in names] + ["(Back)"]
-        gs["screen"] = "combat_item"
-        return respond("combat_item", "Use Item", "Choose an item:", options)
+        return combat_item_state()
 
     # Flee (not allowed in dungeon)
     elif choice == 2:
@@ -355,42 +423,31 @@ def combat_action(choice):
 def combat_item_action(choice):
     p = gs["player"]
     e = gs["enemy"]
-    consumables = [item for item in p.inventory if item.category == "item" and item != p.weapon and item != p.armor and item != p.shield]
-    grouped = {}
-    for item in consumables:
-        grouped.setdefault(item.name, []).append(item)
-    names = list(grouped.keys())
+    entries = combat_item_list(p)
 
-    if choice >= len(names):
+    # (Back) is the only thing that leaves this screen - using an item leaves
+    # you standing here so the fight does not jump back to the main menu.
+    if choice >= len(entries):
         gs["screen"] = "combat"
         return combat_state()
 
-    item = grouped[names[choice]][0]
-    if item.name == "Healing Potion":
-        heal = 9
-        p.hp = min(p.hp + heal, p.max_hp)
-        p.remove_item(item)
-        gs["log"].append(f"Drank Healing Potion! Restored {heal} HP.")
-    elif item.name == "Greater Healing Potion":
-        heal = 20
-        p.hp = min(p.hp + heal, p.max_hp)
-        p.remove_item(item)
-        gs["log"].append(f"Drank Greater Healing Potion! Restored {heal} HP.")
-    else:
-        gs["log"].append(f"Cannot use {item.name} in combat yet.")
+    message = use_item_in_combat(p, entries[choice]["name"])
+    gs["log"].append(message)
 
-        result2 = web_enemy_attack(p, e)
-        gs["log"].append(result2)
+    if heal_amount(entries[choice]["name"]):
+        if not e.is_alive():
+            return combat_reward("Victory!")
+        return combat_item_state()
 
-        if not p.is_alive():
-            gs["screen"] = "game_over"
-            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
+    # Unusable: it costs you the turn.
+    result2 = web_enemy_attack(p, e)
+    gs["log"].append(result2)
 
-        gs["screen"] = "combat"
-        return combat_state()
+    if not p.is_alive():
+        gs["screen"] = "game_over"
+        return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"])
 
-    gs["screen"] = "combat"
-    return combat_state()
+    return combat_item_state()
 
 # Player Attack
 def web_player_attack(p, e):
@@ -405,14 +462,33 @@ def web_player_attack(p, e):
     atk = roll("1d20") + prof + mod
 
     if atk >= e.ac:
-        dmg = max(roll(p.weapon.damage_dice) + mod, 1) if p.weapon else max(1 + mod, 1)
-        e.take_damage(dmg)
-        return f"You hit the {e.name} for {dmg} damage! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
+        heavy = two_handed_bonus(p.weapon)
+        if p.weapon:
+            dmg = max(roll(p.weapon.damage_dice) + mod + heavy, 1)
+        else:
+            dmg = max(1 + mod, 1)
+        # The weapon's damage type decides how hard this lands: skeletons
+        # crumble to bludgeoning, slimes shrug off steel.
+        type_name = damage_type(p.weapon.damage_type) if p.weapon else None
+        total, note = e.apply_damage(dmg, type_name)
+        effect = e.inflict_element(element_of(p.weapon), p)
+        line = (f"You hit the {e.name} for {total} damage!{note} "
+                f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac})")
+        if heavy > 0:
+            line += f" +{heavy} two-handed"
+        return line + effect
     else:
         return f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
 
 # Enemy Attack
 def web_enemy_attack(p, e):
+    # A frozen monster loses its whole turn.
+    if e.is_frozen():
+        e.status["freeze_rounds"] -= 1
+        left = max(0, e.status["freeze_rounds"])
+        return (f"{e.name} is frozen solid and cannot attack!"
+                + (f" ({left} round{'s' if left > 1 else ''} left)" if left else ""))
+
     bonus = e.level // 2 + 2
     atk = roll("1d20") + bonus
 
@@ -705,14 +781,14 @@ def sell_item():
         item, p.weapon = p.weapon, None
     elif p.armor and p.armor.name == item_name:
         item, p.armor = p.armor, None
-    elif p.shield and p.shield.name == item_name:
-        item, p.shield = p.shield, None
+    elif p.offhand and p.offhand.name == item_name:
+        item, p.offhand = p.offhand, None
     else:
         gs["log"] = ["You don't have that any more."]
         return show_shop(gs.get("shop_name") or next(iter(SHOP_NPCS)))
 
     # Selling equipped gear leaves you unequipped until you equip something else.
-    if item is p.weapon or item is p.armor or item is p.shield:
+    if item is p.weapon or item is p.armor or item is p.offhand:
         p.ac = p.calc_ac()
         p.recalc_hp()
 
@@ -725,7 +801,11 @@ def show_shop(shop_name):
     shop = SHOP_NPCS[shop_name]
     available = {n: d for n, d in shop["items"].items() if p.level >= d["min_level"]}
     items_list = [f"{n} ({d['price']}g)" for n, d in available.items()]
-    return respond("shop", shop_name, "", items_list + ["(Back)"], extra={"shop_items": list(available.keys()), "shop_prices": [d["price"] for d in available.values()]})
+    return respond("shop", shop_name, "", items_list + ["(Back)"],
+                   extra={"shop_items": list(available.keys()),
+                          "shop_prices": [d["price"] for d in available.values()],
+                          # Only potions get the quantity stepper.
+                          "shop_potions": [is_potion(n) for n in available.keys()]})
 
 # ---- Inventory ----
 def inventory_state():
@@ -735,10 +815,12 @@ def inventory_state():
         lines.append(f"Weapon: {p.weapon.name}")
     if p.armor:
         lines.append(f"Armor: {p.armor.name}")
-    if p.shield:
-        lines.append(f"Shield: {p.shield.name}")
+    if p.offhand:
+        lines.append(f"Off-hand: {p.offhand.name}")
+    if p.hands_full():
+        lines.append("(both hands are full)")
 
-    storage = [item for item in p.inventory if item != p.weapon and item != p.armor and item != p.shield]
+    storage = [item for item in p.inventory if item != p.weapon and item != p.armor and item != p.offhand]
     grouped = {}
     for item in storage:
         grouped.setdefault(item.name, []).append(item)
@@ -747,14 +829,59 @@ def inventory_state():
     for name, items_list in grouped.items():
         storage_lines.append(f"{name} x{len(items_list)}" if len(items_list) > 1 else name)
 
+    # Per-item reason an Equip button should be disabled, so the panel can
+    # explain the refusal instead of letting the player hit a dead end.
+    blocked = {}
+    for name, item_list in grouped.items():
+        refusal = equip_refusal(p, item_list[0])
+        if refusal:
+            blocked[name] = refusal
+
     body = "Equipped:\n  " + ("\n  ".join(lines) if lines else "None") + "\n\nStorage:\n  " + ("\n  ".join(storage_lines) if storage_lines else "(empty)")
     gs["screen"] = "inventory"
-    options = [f"[Use] {n}" for n in storage_lines] + ["(Close)"] if storage_lines else ["(Close)"]
-    return respond("inventory", "INVENTORY", body, options, extra={"inv_items": [name for name in grouped.keys()]})
+    options = list(storage_lines) + ["(Close)"] if storage_lines else ["(Close)"]
+    return respond("inventory", "INVENTORY", body, options,
+                   extra={"inv_items": list(grouped.keys()),
+                          "inv_blocked": blocked})
+
+def equip_target_for(p, item):
+    """Which slot an item would go into when equipped.
+
+    Weapons are the interesting case. A two-handed weapon always takes the main
+    hand and hands the off-hand back; a one-handed weapon takes the main hand if
+    it is free, otherwise the off-hand (that is how you end up dual-wielding),
+    and only replaces the main hand once both hands are busy.
+    """
+    if item.category == "weapon":
+        if is_two_handed(item):
+            return "weapon"
+        if not p.weapon:
+            return "weapon"
+        if is_two_handed(p.weapon):
+            return "weapon"      # main hand owns both
+        if not p.offhand:
+            return "offhand"
+        return "weapon"
+    if item.category == "armor":
+        if item.armor_type == "shield":
+            return "offhand"
+        return "armor"
+    return None
+
+def equip_refusal(p, item):
+    """Why this item cannot be equipped right now, or None if it can."""
+    slot = equip_target_for(p, item)
+    if slot is None:
+        return None
+    if slot == "offhand" and not p.can_equip_offhand(item):
+        return p.offhand_block_reason() or "That cannot go in your off-hand."
+    return None
 
 def inventory_action(choice):
+    """Selecting an entry never equips or drinks anything - it only opens the
+    detail panel. The Equip and Use buttons call the routes below."""
     p = gs["player"]
-    storage = [item for item in p.inventory if item != p.weapon and item != p.armor and item != p.shield]
+    storage = [item for item in p.inventory if item != p.weapon and item != p.armor and item != p.offhand]
     grouped = {}
     for item in storage:
         grouped.setdefault(item.name, []).append(item)
@@ -764,43 +891,78 @@ def inventory_action(choice):
         gs["screen"] = "town"
         return respond("town", town_name(), "What do you want to do?", ["Fight", "Visit Shop", "Inventory", "Save Game", "Quests", "Quit"])
 
-    item = grouped[names[choice]][0]
+    return inventory_state()
 
-    if item.category == "weapon":
+def _remove_one(p, name):
+    index = next((i for i, item in enumerate(p.inventory) if item.name == name), None)
+    return p.inventory.pop(index) if index is not None else None
+
+@app.route("/inventory_equip", methods=["POST"])
+def inventory_equip():
+    """Moves one item out of storage and into its slot."""
+    p = gs["player"]
+    name = (request.json or {}).get("item")
+    item = get_item(name)
+    if item is None:
+        gs["log"] = [f"You don't have {name} any more."]
+        return inventory_state()
+    item = create_item(name)
+
+    refusal = equip_refusal(p, item)
+    if refusal:
+        gs["log"] = [refusal]
+        return inventory_state()
+
+    slot = equip_target_for(p, item)
+    if _remove_one(p, name) is None:
+        gs["log"] = [f"You don't have {name} any more."]
+        return inventory_state()
+
+    if slot == "weapon":
         if p.weapon:
             p.inventory.append(p.weapon)
         p.weapon = item
-        p.remove_item(item)
+        stowed = p.stow_offhand() if is_two_handed(item) else None
+        p.ac = p.calc_ac()
+        p.recalc_hp()
+        gs["log"] = [f"Equipped {item.name}!" +
+                     (f" {stowed.name} went back to storage." if stowed else "")]
+    elif slot == "armor":
+        if p.armor:
+            p.inventory.append(p.armor)
+        p.armor = item
         p.ac = p.calc_ac()
         p.recalc_hp()
         gs["log"] = [f"Equipped {item.name}!"]
-    elif item.category == "armor":
-        if item.armor_type == "shield":
-            if p.shield:
-                p.inventory.append(p.shield)
-            p.shield = item
-        else:
-            if p.armor:
-                p.inventory.append(p.armor)
-            p.armor = item
-        p.remove_item(item)
+    elif slot == "offhand":
+        old = p.offhand
+        p.offhand = item
+        if old:
+            p.inventory.append(old)
         p.ac = p.calc_ac()
         p.recalc_hp()
-        gs["log"] = [f"Equipped {item.name}!"]
-    elif item.category == "item":
-        if item.name == "Healing Potion":
-            heal = 9
-            p.hp = min(p.hp + heal, p.max_hp)
-            p.remove_item(item)
-            gs["log"] = [f"Drank Healing Potion! Restored {heal} HP."]
-        elif item.name == "Greater Healing Potion":
-            heal = 20
-            p.hp = min(p.hp + heal, p.max_hp)
-            p.remove_item(item)
-            gs["log"] = [f"Drank Greater Healing Potion! Restored {heal} HP."]
-        else:
-            gs["log"] = [f"Cannot use {item.name} yet."]
+        gs["log"] = [f"Equipped {item.name} in your off-hand!"]
+    else:
+        p.inventory.append(item)
+        gs["log"] = [f"You cannot equip {item.name}."]
 
+    return inventory_state()
+
+@app.route("/inventory_use", methods=["POST"])
+def inventory_use():
+    """Drinks a potion out of combat."""
+    p = gs["player"]
+    name = (request.json or {}).get("item")
+    if not is_potion(name):
+        gs["log"] = [f"Cannot use {name} yet."]
+        return inventory_state()
+    if _remove_one(p, name) is None:
+        gs["log"] = [f"You don't have {name} any more."]
+        return inventory_state()
+    before = p.hp
+    heal = heal_amount(name)
+    p.hp = min(p.hp + heal, p.max_hp)
+    gs["log"] = [f"Drank {name}! Restored {p.hp - before} HP ({heal} attempted)."]
     return inventory_state()
 
 # ---- Load Game ----
@@ -836,6 +998,38 @@ def load_action(choice):
 #================================
 # This section handles the world map data and travel between locations. 
 # The locations and their connections are defined in world_map.py.
+def _item_details():
+    """Flat catalogue for the UI's detail panels.
+
+    Mirrors what js/items.js exposes to the PWA: damage and damage type, the
+    two-handed bonus, the element a weapon carries, and whether an item can be
+    used. The inventory additionally annotates offhand_block per equipped item.
+    """
+    out = {}
+    for name, item in ITEMS.items():
+        entry = {"category": item.category}
+        if item.category == "weapon":
+            entry["damage"] = item.damage_dice
+            entry["type"] = damage_type(item.damage_type)
+            entry["two_handed"] = two_handed_bonus(item)
+            entry["element"] = element_of(item)
+            entry["properties"] = item.properties
+        elif item.category == "armor":
+            entry["ac"] = item.base_ac
+            entry["kind"] = item.armor_type
+        else:
+            entry["description"] = item.description
+            entry["heal"] = heal_amount(name)
+            entry["usable"] = is_potion(name)
+        if item.stats_bonus:
+            entry["bonus"] = [f"{k} +{v}" for k, v in item.stats_bonus.items()]
+        out[name] = entry
+    return out
+
+@app.route("/item_details")
+def item_details():
+    return jsonify({"items": _item_details()})
+
 @app.route("/map_data")
 def map_data():
     current_id = gs["current_location"]

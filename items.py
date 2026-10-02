@@ -28,7 +28,7 @@ class Item:
 ITEMS = {
     
     # Weapons (melee)
-    "Longsword": Weapon("Longsword", "1d8", "slashing", ["versatile"], stats_bonus={"STR": 1}),
+    "Longsword": Weapon("Longsword", "1d8", "slashing", ["two-handed", "versatile"], stats_bonus={"STR": 1}),
     "Greatsword": Weapon("Greatsword", "2d6", "slashing", ["two-handed", "heavy"], stats_bonus={"STR": 2}),
     "Battle Axe": Weapon("Battle Axe", "1d8", "slashing", ["versatile"], stats_bonus={"STR": 1}),
     "War Hammer": Weapon("War Hammer", "1d10", "bludgeoning", ["versatile"], stats_bonus={"STR": 1}),
@@ -82,7 +82,10 @@ ITEMS = {
     
     # Items (potions & consumables)
     "Healing Potion": Item("Healing Potion", "Restores 9 HP", "heal"),
-    "Greater Healing Potion": Item("Greater Healing Potion", "Restores 20 HP", "heal_strong"),
+    "Greater Healing Potion": Item("Greater Healing Potion", "Restores 20 HP", "heal"),
+    "Superior Healing Potion": Item("Superior Healing Potion", "Restores 100 HP. Unlocks at level 15.", "heal"),
+    "Grand Healing Potion": Item("Grand Healing Potion", "Restores 300 HP. Unlocks at level 35.", "heal"),
+    "Ultimate Healing Potion": Item("Ultimate Healing Potion", "Restores 800 HP. Unlocks at level 70.", "heal"),
     #"Mana Potion": Item("Mana Potion", "Restores mana (future use)", "mana"),
     #"Antidote": Item("Antidote", "Cures poison (future use)", "antidote"),
     
@@ -128,6 +131,8 @@ ITEMS = {
     "Storm Wand": Weapon("Storm Wand", "1d6", "lightning", ["magic", "ranged"], stats_bonus={"DEX": 1}),
     "Bone Wand": Weapon("Bone Wand", "1d6", "dark", ["magic", "ranged"], stats_bonus={"WIS": 1}),
     "Runed Dagger": Weapon("Runed Dagger", "1d4", "force", ["finesse", "light", "magic"], stats_bonus={"DEX": 2, "INT": 1}),
+    "Venom Dagger": Weapon("Venom Dagger", "1d4", "poison", ["finesse", "light", "thrown"], stats_bonus={"DEX": 1}),
+    "Plasma Wand": Weapon("Plasma Wand", "1d6", "poison", ["magic", "ranged"], stats_bonus={"INT": 1}),
 
     # --- Extra armour and shields (added: 30) ---
     "Padded Armor": Armor("Padded Armor", 10, "light", stats_bonus={"CON": 1}),
@@ -211,4 +216,95 @@ MATERIALS = {
 def is_material(item):
     """True for quest materials: not craftable, not sellable."""
     return item is not None and item.name in MATERIALS
+
+
+# -----------------------------
+# Healing potions
+# -----------------------------
+# One table drives every healing value in the game - the shop preview, the
+# inventory panel and the actual restore in and out of combat. Adding a tier
+# here is all that is needed; nothing hard-codes a potion's strength.
+# Mirrors POTION_HEAL in js/items.js.
+POTION_HEAL = {
+    "Healing Potion": 9,
+    "Greater Healing Potion": 20,
+    "Superior Healing Potion": 100,
+    "Grand Healing Potion": 300,
+    "Ultimate Healing Potion": 800,
+}
+
+# The level each tier starts appearing in shops.
+POTION_MIN_LEVEL = {
+    "Healing Potion": 1,
+    "Greater Healing Potion": 5,
+    "Superior Healing Potion": 15,
+    "Grand Healing Potion": 35,
+    "Ultimate Healing Potion": 70,
+}
+
+
+def is_potion(name):
+    """True for any healing potion, by name."""
+    return name in POTION_HEAL
+
+
+def heal_amount(name):
+    """How much HP a potion restores (0 for anything that is not a potion)."""
+    return POTION_HEAL.get(name, 0)
+
+
+# -----------------------------
+# Two-handed weapons
+# -----------------------------
+# A two-handed weapon needs both hands, which is what locks the off-hand (see
+# player.py). It also hits harder: the bonus below is added to every hit, and
+# is keyed off the damage dice so it always matches the weapon it belongs to.
+TWO_HANDED_BONUS = {
+    "1d4": 0, "1d6": 0, "1d8": 1, "1d10": 1, "1d12": 1,
+    "2d4": 1, "2d6": 1, "2d10": 2, "2d12": 2,
+}
+
+
+def is_two_handed(item):
+    """True when the item has the two-handed property."""
+    return item is not None and "two-handed" in item.properties
+
+
+def two_handed_bonus(weapon):
+    """Extra damage a two-handed weapon deals, or 0 for anything else."""
+    if not is_two_handed(weapon):
+        return 0
+    return TWO_HANDED_BONUS.get(weapon.damage_dice, 0)
+
+
+# -----------------------------
+# Damage types and elements
+# -----------------------------
+# damage_type is stored in a few shapes ("fire_damage", "cold"); everything
+# downstream uses one canonical name per element. Mirrors DAMAGE_TYPE_ALIASES
+# in js/items.js.
+DAMAGE_TYPE_ALIASES = {
+    "fire_damage": "fire",
+    "cold": "ice",
+}
+
+DAMAGE_TYPES = ["slashing", "bludgeoning", "piercing", "fire",
+                "ice", "lightning", "dark", "force", "poison"]
+
+# Only these three inflict a lasting effect when they land a hit.
+ELEMENT_STATUS = {"fire": "burn", "ice": "freeze", "poison": "poison"}
+
+
+def damage_type(name):
+    """Canonical name for a stored damage type."""
+    key = str(name or "piercing")
+    return DAMAGE_TYPE_ALIASES.get(key, key)
+
+
+def element_of(weapon):
+    """The element a weapon carries, or None if it has no lasting effect."""
+    if weapon is None:
+        return None
+    t = damage_type(weapon.damage_type)
+    return t if t in ELEMENT_STATUS else None
 

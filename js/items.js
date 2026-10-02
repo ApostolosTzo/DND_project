@@ -32,7 +32,7 @@ function Item(name, description, effect, stats_bonus) {
 
 const ITEMS = {
     // Weapons (melee)
-    "Longsword": new Weapon("Longsword", "1d8", "slashing", ["versatile"], { STR: 1 }),
+    "Longsword": new Weapon("Longsword", "1d8", "slashing", ["two-handed", "versatile"], { STR: 1 }),
     "Greatsword": new Weapon("Greatsword", "2d6", "slashing", ["two-handed", "heavy"], { STR: 2 }),
     "Battle Axe": new Weapon("Battle Axe", "1d8", "slashing", ["versatile"], { STR: 1 }),
     "War Hammer": new Weapon("War Hammer", "1d10", "bludgeoning", ["versatile"], { STR: 1 }),
@@ -81,7 +81,10 @@ const ITEMS = {
 
     // Items (potions & consumables)
     "Healing Potion": new Item("Healing Potion", "Restores 9 HP", "heal"),
-    "Greater Healing Potion": new Item("Greater Healing Potion", "Restores 20 HP", "heal_strong"),
+    "Greater Healing Potion": new Item("Greater Healing Potion", "Restores 20 HP", "heal"),
+    "Superior Healing Potion": new Item("Superior Healing Potion", "Restores 100 HP. Unlocks at level 15.", "heal"),
+    "Grand Healing Potion": new Item("Grand Healing Potion", "Restores 300 HP. Unlocks at level 35.", "heal"),
+    "Ultimate Healing Potion": new Item("Ultimate Healing Potion", "Restores 800 HP. Unlocks at level 70.", "heal"),
 
     // Items (scrolls - future use)
     "Scroll of Fireball": new Item("Scroll of Fireball", "Deals fire damage (future use)", "scroll_fireball"),
@@ -122,6 +125,8 @@ const ITEMS = {
     "Storm Wand": new Weapon("Storm Wand", "1d6", "lightning", ["magic", "ranged"], {DEX: 1}),
     "Bone Wand": new Weapon("Bone Wand", "1d6", "dark", ["magic", "ranged"], {WIS: 1}),
     "Runed Dagger": new Weapon("Runed Dagger", "1d4", "force", ["finesse", "light", "magic"], {DEX: 2, INT: 1}),
+    "Venom Dagger": new Weapon("Venom Dagger", "1d4", "poison", ["finesse", "light", "thrown"], {DEX: 1}),
+    "Plasma Wand": new Weapon("Plasma Wand", "1d6", "poison", ["magic", "ranged"], {INT: 1}),
 
     // --- Extra armour and shields (added: 30) ---
     "Padded Armor": new Armor("Padded Armor", 10, "light", null, [], {CON: 1}),
@@ -219,5 +224,96 @@ const MATERIALS = {
 // True for quest materials: not craftable, not sellable.
 function isMaterial(item) {
     return !!item && Object.prototype.hasOwnProperty.call(MATERIALS, item.name);
+}
+
+// -----------------------------
+// Healing potions
+// -----------------------------
+// One table drives every healing value in the game - the shop preview, the
+// inventory panel and the actual restore in and out of combat. Adding a tier
+// here is all that is needed; nothing hard-codes a potion's strength.
+const POTION_HEAL = {
+    "Healing Potion": 9,
+    "Greater Healing Potion": 20,
+    "Superior Healing Potion": 100,
+    "Grand Healing Potion": 300,
+    "Ultimate Healing Potion": 800
+};
+
+// The level each tier starts appearing in shops.
+const POTION_MIN_LEVEL = {
+    "Healing Potion": 1,
+    "Greater Healing Potion": 5,
+    "Superior Healing Potion": 15,
+    "Grand Healing Potion": 35,
+    "Ultimate Healing Potion": 70
+};
+
+function isPotion(name) {
+    return Object.prototype.hasOwnProperty.call(POTION_HEAL, name);
+}
+
+function healAmount(name) {
+    return POTION_HEAL[name] || 0;
+}
+
+// Potions the player could actually use right now - full HP means no point, and
+// the strongest one the player owns is always worth showing first.
+function bestUsablePotion(p) {
+    let best = null;
+    p.inventory.forEach((item) => {
+        if (isPotion(item.name) && p.hp < p.max_hp) {
+            if (!best || healAmount(item.name) > healAmount(best.name)) best = item;
+        }
+    });
+    return best;
+}
+
+// -----------------------------
+// Two-handed weapons
+// -----------------------------
+// A two-handed weapon needs both hands, which is what locks the off-hand (see
+// player.js). It also hits harder: the bonus below is added to every hit, and
+// is keyed off the damage dice so it always matches the weapon it belongs to.
+const TWO_HANDED_BONUS = {
+    "1d4": 0, "1d6": 0, "1d8": 1, "1d10": 1, "1d12": 1,
+    "2d4": 1, "2d6": 1, "2d10": 2, "2d12": 2
+};
+
+function isTwoHanded(item) {
+    return !!item && Array.isArray(item.properties) && item.properties.indexOf("two-handed") !== -1;
+}
+
+function twoHandedBonus(weapon) {
+    if (!isTwoHanded(weapon)) return 0;
+    const bonus = TWO_HANDED_BONUS[weapon.damage_dice];
+    return bonus === undefined ? 0 : bonus;
+}
+
+// -----------------------------
+// Damage types and elements
+// -----------------------------
+// damage_type is stored in a few shapes ("fire_damage", "cold"); everything
+// downstream uses one canonical name per element.
+const DAMAGE_TYPE_ALIASES = {
+    fire_damage: "fire",
+    cold: "ice"
+};
+
+const DAMAGE_TYPES = ["slashing", "bludgeoning", "piercing", "fire",
+    "ice", "lightning", "dark", "force", "poison"];
+
+function damageType(name) {
+    const key = String(name || "piercing");
+    return DAMAGE_TYPE_ALIASES[key] || key;
+}
+
+// Only these three inflict a lasting effect when they land a hit.
+const ELEMENT_STATUS = { fire: "burn", ice: "freeze", poison: "poison" };
+
+function elementOf(weapon) {
+    if (!weapon) return null;
+    const type = damageType(weapon.damage_type);
+    return Object.prototype.hasOwnProperty.call(ELEMENT_STATUS, type) ? type : null;
 }
 

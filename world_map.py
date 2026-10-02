@@ -12,7 +12,7 @@ LOCATIONS = {
         "y": 180,
         "type": "town",
         "connects_to": ["village1", "village2"],
-        "shops": ["Potion Merchant", "Weaponsmith", "Armorer", "Archer", "Wizard"],
+        "shops": ["Potion Merchant", "Weaponsmith", "Armorer", "Shield Smith", "Archer", "Wizard"],
     },
     "village1": {
         "name": "Village 1",
@@ -20,7 +20,7 @@ LOCATIONS = {
         "y": 310,
         "type": "village",
         "connects_to": ["town", "dungeon"],
-        "shops": ["Potion Merchant", "Weaponsmith", "Armorer"],
+        "shops": ["Potion Merchant", "Weaponsmith", "Armorer", "Shield Smith"],
     },
     "village2": {
         "name": "Village 2",

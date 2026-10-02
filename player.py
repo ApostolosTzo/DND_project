@@ -10,7 +10,7 @@
 
 from dice import roll_4d6_drop_lowest
 from ui import menu, prompt, clear_screen, show, press_any_key
-from items import ITEMS, STARTING_GEAR, get_item, create_item
+from items import ITEMS, STARTING_GEAR, get_item, create_item, is_two_handed
 
 RACES = {
     "Human": {"desc": "Versatile and ambitious", "bonuses": {"STR": 1, "DEX": 1, "CON": 1, "INT": 1, "WIS": 1, "CHA": 1}},
@@ -43,7 +43,7 @@ class Player:
         self.stats = stats
         self.weapon = None
         self.armor = None
-        self.shield = None
+        self.offhand = None
         self.max_hp = CLASSES[class_name]["hp"] + self.modifier("CON")
         self.hp = self.max_hp
         self.inventory = []
@@ -54,7 +54,7 @@ class Player:
 
     def get_equipment_stat_bonus(self):
         bonus = {}
-        for item in [self.weapon, self.armor, self.shield]:
+        for item in [self.weapon, self.armor, self.offhand]:
             if item:
                 for stat, val in item.stats_bonus.items():
                     bonus[stat] = bonus.get(stat, 0) + val
@@ -84,10 +84,11 @@ class Player:
                 ac += min(self.modifier("DEX"), 2)
         else:
             ac = 10 + self.modifier("DEX")
-        if self.shield:
-            ac += self.shield.base_ac
+        # Only a shield in the off-hand adds AC. A second weapon is dead weight.
+        if self.offhand and self.offhand.armor_type == "shield":
+            ac += self.offhand.base_ac
         return ac
-    
+
     #===========================
     # Inventory Management
     #===========================
@@ -101,9 +102,75 @@ class Player:
         if self.hp > self.max_hp:
             self.hp = self.max_hp
 
+    #===========================
+    # Two hands
+    #===========================
+
+    def hands_full(self):
+        """True when both hands are spoken for.
+
+        Either a two-handed weapon is equipped, or the off-hand slot is taken.
+        This is the single check the UI and the inventory both ask before
+        handing over a second item.
+        """
+        return is_two_handed(self.weapon) or self.offhand is not None
+
+    def offhand_block_reason(self):
+        """Why the off-hand is unavailable, for the UI to explain the refusal."""
+        if is_two_handed(self.weapon):
+            return f"{self.weapon.name} is two-handed - it needs both hands."
+        if self.offhand:
+            return f"Your off-hand already holds {self.offhand.name}."
+        return ""
+
+    def can_equip_offhand(self, item):
+        """Shields and one-handed weapons fit; a two-handed weapon never does.
+
+        A shield is refused outright while a two-handed weapon is equipped.
+        """
+        if item is None:
+            return False
+        if is_two_handed(self.weapon):
+            return False
+        if is_two_handed(item):
+            return False
+        return True
+
+    def stow_offhand(self):
+        """Puts the current off-hand back in the bag. Returns it, or None."""
+        old = self.offhand
+        if old:
+            self.offhand = None
+            self.inventory.append(old)
+        self.ac = self.calc_ac()
+        return old
+
+    #===========================
+    # Equipment
+    #===========================
+
     def equip_weapon(self, weapon):
+        """Equips a weapon.
+
+        A two-handed one takes both hands and hands the off-hand back rather
+        than silently dropping it or leaving an illegal shield equipped.
+        """
         self.weapon = weapon
+        if is_two_handed(weapon):
+            self.stow_offhand()
+        else:
+            self.ac = self.calc_ac()
         self.recalc_hp()
+
+    def equip_offhand(self, item):
+        """Equips a shield or second weapon. Returns False if it does not fit."""
+        if not self.can_equip_offhand(item):
+            return False
+        self.stow_offhand()
+        self.offhand = item
+        self.ac = self.calc_ac()
+        self.recalc_hp()
+        return True
 
     def equip_armor(self, armor):
         self.armor = armor
@@ -198,8 +265,10 @@ class Player:
         lines.append(f"Gold:  {self.gold}")
         weapon_name = self.weapon.name if self.weapon else "None"
         armor_name = self.armor.name if self.armor else "None"
+        offhand_name = self.offhand.name if self.offhand else "None"
         lines.append(f"Weapon: {weapon_name}")
         lines.append(f"Armor:  {armor_name}")
+        lines.append(f"Offhand: {offhand_name}")
         lines.append("")
         for s in STAT_ORDER:
             mod = self.modifier(s)

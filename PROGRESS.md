@@ -523,48 +523,71 @@ Grouped consumables by name (same pattern as the inventory screen). The options 
 ### Files changed
 - `game_server.py` — `combat_action()` and `combat_item_action()` both build a grouped item dict and index into group names instead of raw item list
 
-## Hosting moved to Cloudflare
+## Hosting moved to Cloudflare Pages
 
-> **Superseded:** the deployment originally shipped through **GitHub Pages**. That
-> path is gone — `.nojekyll` deleted, the README no longer describes it, and the Pages
-> deployment was removed from the repository. The GitHub Pages notes further down
-> are kept only as a record of what was done at the time.
+> **Superseded:** the deployment originally shipped through **GitHub Pages**, then
+> briefly through a **Cloudflare Worker** on `workers.dev`. Neither is in use now.
+> `.nojekyll` is deleted, the GitHub Pages deployment was removed from the
+> repository (`has_pages: false`), and the Worker can be deleted from the
+> Cloudflare dashboard. The GitHub Pages notes further down are kept only as a
+> record of what was done at the time.
 
-The game now lives at **https://dnd-project.ap-tzortzakis.workers.dev** — a Cloudflare
-**Worker serving the repository as static assets**, connected to GitHub through
-Cloudflare's Git integration. A push to `main` still deploys automatically — only
-the host changed.
+The game lives at **https://dnd-project-ekf.pages.dev** — a **Cloudflare Pages**
+project connected to this repository through the Pages GitHub App. A push to
+`main` deploys automatically; nothing is published by hand.
 
-| Removed | Replaced with |
+| Setting | Value |
 |---|---|
+| Framework preset | *None* |
+| Build command | *(leave empty)* |
+| Build output directory | `/` (repo root — `index.html` is there) |
+| Production branch | `main` |
+
+| Superseded | Replaced with |
+|---|---|
+| GitHub Pages (`apostolostzo.github.io/DND_project`) | deleted from the repo |
 | `.nojekyll` (stopped GitHub Pages running Jekyll) | nothing needed |
-| GitHub Pages deployment on the repo | Cloudflare Worker `dnd-project` |
-| README "Settings — Pages — Deploy from a branch" steps | Workers — `dnd-project` — Settings — Builds (Git connection, production branch `main`) |
+| Cloudflare Worker `dnd-project` on `workers.dev` | Cloudflare Pages `dnd-project-ekf` on `pages.dev` |
 
-Note the host is a Worker on a `workers.dev` subdomain, not Cloudflare Pages
-(`pages.dev`) — the two products are configured in different places, so the README
-documents the Worker path.
+The detour through a Worker was instructive: `workers.dev` and `pages.dev` are
+different products. A Worker's hostname cannot be changed to `pages.dev`, so the
+move required creating a *new* Pages project rather than renaming anything.
 
-Added: **`_headers`**, which asks Cloudflare not to serve a stale `sw.js` or
-`index.html` from its CDN:
+### `_headers`
+
+Cloudflare Pages consumes this file and applies it to responses:
 
 ```
 /sw.js
   Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
+/icons/*
+  Cache-Control: public, max-age=86400
 ```
 
-That is the piece GitHub Pages did not need. In testing the Worker already served
-both as `must-revalidate`, so this is a guarantee rather than a fix — without it the
-CDN could pin an old service worker in a player's browser and no push would ever
-reach them. The `CACHE_VERSION` bump in `sw.js` is still required for game-code
-changes; these headers make sure the browser is even *told* there is a new worker.
+Confirmed live on the Pages deployment — `/sw.js` returns `no-cache` and
+`/icons/icon-192.png` returns `max-age=86400`, neither of which is the Pages
+default. The file itself is not served: requesting `/_headers` returns the app
+shell, because unknown paths fall back to `index.html`.
 
-Nothing else moved: all asset paths were already relative, so the build works
-unchanged from a domain root or a project subdomain. Verified by byte-comparing the
-served `index.html` against the repository — identical (SHA-256 `AC82F448`
-`F81053BC`) — before the old deployment was switched off.
+Pages already revalidates assets by default, so this is a guarantee rather than a
+fix. The `CACHE_VERSION` bump in `sw.js` remains the actual update mechanism for
+game-code changes.
+
+### Verification of the Pages deployment
+
+| Check | Result |
+|---|---|
+| Served `index.html` | SHA-256 `AC82F448F81053BC` — byte-identical to the repo |
+| All 9 game scripts + `manifest.json` + icons | 200 |
+| Console errors on load | none |
+| Service worker | registers, activates, controls the page |
+| Precache (`dnd-pwa-v5`) | 16 assets, full offline shell |
+
+Because the output directory is the repo root, the Python backend is published too
+(—`/items.py` returns 200 with the Flask source—). Long-standing, harmless, but worth
+knowing before the project goes public.
 
 ## PWA Port (originally GitHub Pages, fully client-side)
 
@@ -1129,8 +1152,207 @@ Clicks on any part of the node — centre, glyph or label — bubble to the grou
 - Flask HTTP suite: quest hub → accept → hand in, `/sell` (including equipped weapon, AC drop 16 → 13), unsellable materials, and a live fight loop that collected 7 materials in 15 kills (matches the 75% rate)
 - Browser: sell tab lists equipped gear with prices, warning + Continue sells and unequips, Cancel changes nothing, map clicks travel
 
+## Damage Types, Two Hands, Elements & Shop Qty
+
+Nine features, mirrored across both builds. The catalogue is now 114 items
+(50 weapons, 49 armours, 15 items) and every stat below has exactly one home:
+the rules tables live beside the items in `items.py` / `js/items.js`, and the
+player asks them questions rather than each caller re-deriving them.
+
+### 1. Potion quantity selector, potions only
+
+The shop's inline detail panel grew a stepper for stacking items: 1 / 5 / 10 / 20
+and Max (how many your gold covers, capped at 99), with the total updating live
+and turning red when you cannot afford the selection. Non-potions keep the
+single one-tap Buy — you do not want four longswords in one go.
+
+### 2. The buy modal is gone, and with it the mouse/keyboard split
+
+**The bug:** the quantity window only opened from the *keyboard*. Enter called
+`showBuy()`, which showed a full-screen `#buy-overlay` modal; a mouse click called
+`toggleShopItem()`, which opened the inline panel. Two paths, two behaviours, and
+the modal was the only place quantity was ever asked for.
+
+**The fix:** both now call `toggleShopItem()` and share one panel. The overlay,
+`showBuy()`, `buyConfirm()` and `hideBuy()` were deleted from both UIs. Keyboard
+`Enter` and a click are now genuinely identical — confirmed by dispatching an
+`Enter` event and clicking the same row.
+
+### 3. Three new healing tiers
+
+| Potion | Heals | Unlocks | Price |
+|---|---|---|---|
+| Healing Potion | 9 HP | level 1 | 15g |
+| Greater Healing Potion | 20 HP | level 5 | 50g |
+| Superior Healing Potion | 100 HP | level 15 | 300g |
+| Grand Healing Potion | 300 HP | level 35 | 1500g |
+| Ultimate Healing Potion | 800 HP | level 70 | 8000g |
+
+Every heal amount now comes from `POTION_HEAL` instead of a literal. That single
+table feeds the shop preview, the inventory panel, drinking in Town and drinking
+in combat — which is how the old `heal` / `heal_strong` string checks stopped being
+a fifth place to update.
+
+### 4. Using an item no longer throws you out of the fight
+
+**The bug:** `combatItemAction()` ended with `return combatState()` after every
+potion, so drinking one dumped you straight back on the main combat menu.
+
+**The fix:** the screen is rebuilt in place (`combatItemState()`) and only `(Back)`
+leaves it. This mattered more than expected while testing: drinking a potion that
+finished the monster would have returned to `combat` with a dead enemy and thrown.
+The victory check now happens before the re-render.
+
+### 5. Weapon damage types decide how hard a hit lands
+
+`damage_type` existed on every weapon but did nothing. Now each monster has
+explicit weaknesses and resistances: **x1.5** when weak, **x0.5** when resistant,
+always rounded to whole numbers and never below 1 so a resisted hit still counts.
+
+| Monster | Weak to | Resists |
+|---|---|---|
+| Zombie | slashing, piercing | bludgeoning, force |
+| Skeleton | bludgeoning, piercing | slashing, fire |
+| Spider | fire, ice | piercing |
+| Wolf | piercing | bludgeoning |
+| Goblin | slashing | ice |
+| Slime | fire, ice | bludgeoning, piercing, slashing |
+| Ghost | force, ice | piercing, slashing |
+| Demon Lord | ice, piercing | fire, dark, force |
+| Elder Dragon | piercing, poison | fire, slashing |
+
+Combat log lines now say `- WEAK to slashing (x1.5)` or `- resists fire (x0.5)`, so
+the reason a big number appeared (or did not) is never a mystery.
+
+### 6. Two-handed weapons hit harder
+
+The bonus is keyed off the damage dice, so it always matches the weapon it belongs
+to: Longsword (1d8) **+1**, Greatsword (2d6) **+1**, Maul (2d10) **+2**,
+Crossbow / Longbow (1d10) **+1**. Everything one-handed is **+0**. The bonus is
+added after the ability modifier and shown in the shop and inventory panels as
+`Two-handed +1 damage per hit`.
+
+### 7. Two hands, properly enforced
+
+The `shield` slot became `offhand`, and `player.hands_full()` is now the single
+check both UIs ask before offering a second item: true when a two-handed weapon is
+equipped **or** the off-hand is occupied.
+
+| In main hand | Off-hand may hold |
+|---|---|
+| two-handed | nothing — the shield goes back to storage automatically |
+| one-handed, off-hand free | a shield or a second one-handed weapon |
+| one-handed, off-hand full | nothing |
+
+Equipping a two-handed weapon **hands the off-hand back to storage** rather than
+silently dropping it or leaving an illegal shield equipped. A shield is refused
+with the reason shown in the panel: *"Longsword is two-handed - it needs both
+hands."* Only a shield in the off-hand adds AC; a second weapon is dead weight.
+
+Which slot a weapon lands in is decided in one place (`equip_target_for`): main
+hand if free, else the off-hand if that is free, else replace main. That ordering
+is what makes "both hands full" mean something rather than being decorative.
+
+**Note for balance:** the Fighter's starting Longsword is two-handed, so a new
+Fighter cannot use a shield until they switch to a one-handed weapon. This follows
+directly from the rule and may want revisiting.
+
+### 8. Fire, ice and poison now do something
+
+Three of the damage types inflict a lasting effect when a hit lands. Which one a
+weapon carries is derived from its `damage_type`, so nothing needs tagging twice.
+
+| Element | Effect | Scales with |
+|---|---|---|
+| Fire | Burning, 2 rounds, damage each round | INT (both length and bite) |
+| Ice | Frozen — the monster loses its whole turn | INT: 2 rounds at 15+, else 1 |
+| Poison | Damage every round **until it dies** | DEX (20% + 3% per point, max 60%) |
+
+Burn and poison resolve at the top of the monster's turn, before it can attack, so
+a burning enemy that dies to its own fire still counts as a kill and pays out.
+Conditions show under the monster's name in combat (`Frozen (1), Burning (2)`).
+
+Two poison weapons were added so the element had representation: **Venom Dagger**
+(1d4, finesse/light/thrown, Weaponsmith) and **Plasma Wand** (1d6, magic/ranged,
+Wizard).
+
+### 9. The inventory explains itself instead of acting immediately
+
+Selecting an item no longer equips or drinks it. Tapping opens the same inline panel
+the shop uses — stats, AC preview, and an **Equip** or **Use** button, with the reason
+written out when Equip is unavailable. The `[Use]` prefixes are gone from the
+option list. Out of combat is `Game.inventoryUse()`; the Flask build gained
+`/inventory_use` and `/inventory_equip` routes to match.
+
+### Also in this pass
+
+- **Combat lists everything, strongest potion first.** Quest drops used to be
+  invisible in the Use Item list, which made it look empty right after a monster
+  dropped something useful. Every item is now listed, unusable ones greyed out and
+  not clickable, healing sorted descending on top.
+- **A Shield Smith.** All 11 shields moved out of the Armorer into one dedicated NPC,
+  in Town and Village 1. Five of them (Iron, Tower, Magic, Dragon, Aegis) were
+  previously in no shop at all and so unsellable.
+- **Off-hand in saves.** Old saves with a `shield` key still load; a two-handed
+  weapon in the same save pushes the off-hand to storage instead of creating an
+  impossible character.
+- **Off-hand in the sidebar.** The player panel and character sheet show it,
+  alongside "both hands are full" when relevant.
+
+### Files changed
+- `items.py`, `js/items.js` — +3 potions, +2 poison weapons, Longsword marked two-handed, `POTION_HEAL`,
+  `POTION_MIN_LEVEL`, `TWO_HANDED_BONUS`, `DAMAGE_TYPE_ALIASES`, `ELEMENT_STATUS`,
+  `is_two_handed()`, `two_handed_bonus()`, `damage_type()`, `element_of()`, `is_potion()`
+- `enemy.py`, `js/enemy.js` — `VULNERABILITIES`, status track (`clear_status`/`status_text`/`is_frozen`),
+  `damage_multiplier()`, `apply_damage()`, `inflict_element()`, `tick_status()`
+- `player.py`, `js/player.js` — `shield` → `offhand`, `hands_full()`, `offhand_block_reason()`,
+  `can_equip_offhand()`, `stow_offhand()`, `equip_offhand()`, `equip_weapon()` frees the
+  off-hand, AC reads the off-hand
+- `shop.py`, `js/shop.js` — Shield Smith NPC, +3 potion tiers, +2 poison weapons, all shields
+  removed from the Armorer
+- `world_map.py`, `js/world_map.js` — Shield Smith added to Town and Village 1
+- `save_load.py`, `js/saves.js` — off-hand persisted, old `shield` key read as a fallback
+- `combat.py`, `inventory.py` — CLI build: damage types, elements, frozen turns, status ticks,
+  off-hand equipping and the new potions
+- `game_server.py`, `js/game.js` — combat item list and re-render, status ticks, frozen enemies,
+  `equip_target_for()`, `equipRefusal()`, `inventoryEquip()`, `inventoryUse()`,
+  `shop_potions` / `combat_items` / `inv_blocked` / `offhand` payloads
+- `game_server.py` — new `/item_details` and `/inventory_equip`, `/inventory_use` routes
+- `index.html`, `templates/index.html` — quantity stepper, top-left back button, inventory
+  detail panel, greyed-out unusable combat items, off-hand sidebar row, modal deleted
+- `sw.js` — `CACHE_VERSION` → `dnd-pwa-v6`
+
+### Verification
+- Node suite: **189 passing** — up from 109 — covering the two-handed bonus table, all nine
+  vulnerability pairs, burn/freeze/poison, the five potion tiers and their level
+  gates, off-hand rules (refusal, auto-stow, dual-wield, displacement), off-hand
+  round-tripping through a save, the combat item ordering, staying on the screen
+  after using a potion, and that the Shield Smith sells all 11 shields while the
+  Armorer sells none
+- Flask suite: **65 new checks passing**, plus the three legacy suites (HTTP,
+  quests/selling, catalogue drift) all still green
+- Catalogue parity: 114 vs 114 items, every field compared Python ↔ JS, both catalogues
+  agree on the Shield Smith being the only shield vendor
+- Browser (PWA): stepper bought 10 Superior Potions for 3000g with gold 5000 → 2000,
+  Enter and click open the same panel, back button sits top-left and hides when
+  a screen has no back entry, a 3-round Ember Blade fight showed resists/burn
+  ticks, and the inventory refusal panel rendered correctly
+- Browser (Flask): same flows through the new routes, no console errors
+
 ## To Do
-- **Export / import saves** as a file (see "Saves: where they live" above) so characters can be backed up and moved between devices
+- **Fighter starts unable to use a shield** — the starting Longsword is two-handed, so the
+  class has to switch weapons before it can hold one. Decide whether to make the
+  Longsword one-handed or give Fighter a different opener
+- **Check the two-handed vs one-handed math** — the +1 sits on top of 2d6, so compare a
+  Greatsword against a Longsword+Dagger before settling on which is strictly better
+- **No off-hand attack** — a second weapon and a shield both raise survivability, but the
+  off-hand weapon adds no damage, no bonus and no extra attack
+- **Status effects only work on monsters** — burning, freezing and poisoning are all one-directional;
+  nothing reflects back at the player yet
+- **Element scaling is uncapped** — INT and DEX have no ceiling on burn damage or poison chance,
+  so an 18 INT wizard melts everything
+- **Export / import saves** as a file (see "Saves: where they live" above) so characters can be
+  backed up and moved between devices
 - Quest system (quest lines with objectives and rewards)
 - Crafting system (craft items using enemy drops)
 - More items (scrolls, rings, materials, etc.)

@@ -1,7 +1,7 @@
 import json
 import os
 from player import Player
-from items import create_item
+from items import create_item, is_two_handed
 
 SAVES_DIR = "saves"
 
@@ -38,7 +38,7 @@ def save_game(player, save_name=None):
         "max_hp": player.max_hp,
         "weapon": player.weapon.name if player.weapon else None,
         "armor": player.armor.name if player.armor else None,
-        "shield": player.shield.name if player.shield else None,
+        "offhand": player.offhand.name if player.offhand else None,
         "inventory": [item.name for item in player.inventory],
         "skill_points": player.skill_points,
     }
@@ -64,8 +64,17 @@ def load_game(save_name):
         player.equip_weapon(create_item(data["weapon"]))
     if data["armor"]:
         player.equip_armor(create_item(data["armor"]))
-    if data["shield"]:
-        player.shield = create_item(data["shield"])
+    # Saves written before the off-hand existed have no "offhand" key at all,
+    # which is why this falls back to the old "shield" slot.
+    offhand_name = data.get("offhand", data.get("shield"))
+    if offhand_name:
+        offhand = create_item(offhand_name)
+        # A two-handed weapon in the same save would make this illegal; equip
+        # the weapon first and let equip_weapon() free the hand instead.
+        if offhand and player.weapon and is_two_handed(player.weapon):
+            player.inventory.append(offhand)
+        elif offhand:
+            player.equip_offhand(offhand)
         player.ac = player.calc_ac()
     for item_name in data["inventory"]:
         player.add_item(create_item(item_name))

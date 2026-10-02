@@ -44,6 +44,8 @@ function playerJson(p) {
         xp_to_next: p.xp_to_next(),
         weapon: p.weapon ? p.weapon.name : "None",
         armor: p.armor ? p.armor.name : "None",
+        offhand: p.offhand ? p.offhand.name : "None",
+        hands_full: p.hands_full(),
         stats: Object.assign({}, p.stats),
         effective_stats: p.effective_stats(),
         stat_bonuses: p.get_equipment_stat_bonus()
@@ -411,7 +413,9 @@ function questNpcAction(npcIndex, choice) {
 function combatState() {
     const e = gs.enemy;
     const p = gs.player;
-    const body = e.display() + "\n\n" + p.name + ": HP " + p.hp + "/" + p.max_hp + "  AC " + p.ac;
+    const status = e.status_text();
+    const body = e.display() + (status ? "\n" + status : "") +
+        "\n\n" + p.name + ": HP " + p.hp + "/" + p.max_hp + "  AC " + p.ac;
     if (gs.dungeon_floor > 0) {
         return respond("combat", "COMBAT", body, ["Attack", "Use Item"]);
     }
@@ -429,6 +433,13 @@ function combatAction(choice) {
 
         if (!e.is_alive()) return combatReward("Victory!");
 
+        // Burn and poison bite before the monster gets to swing back.
+        enemyStatusTurn(p, e).forEach((line) => gs.log.push(line));
+        if (!p.is_alive()) {
+            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
+        }
+        if (!e.is_alive()) return combatReward("Victory!");
+
         gs.log.push(webEnemyAttack(p, e));
 
         if (!p.is_alive()) {
@@ -440,15 +451,15 @@ function combatAction(choice) {
 
     // Use Item
     if (choice === 1) {
-        const grouped = groupConsumables(p);
-        const names = Object.keys(grouped);
-        if (!names.length) {
-            gs.log = ["No potions to use!"];
+        const items = combatItemList(p);
+        if (!items.length) {
+            gs.log = ["You have nothing to use!"];
             return combatState();
         }
-        const options = names.map((n) =>
-            (grouped[n].length > 1 ? n + " x" + grouped[n].length : n)).concat(["(Back)"]);
-        return respond("combat_item", "Use Item", "Choose an item:", options);
+        const options = items.map((item) => combatItemLabel(item)).concat(["(Back)"]);
+        return respond("combat_item", "Use Item",
+            "Choose an item — strongest healing potion first. Nothing here can be used in combat yet is listed greyed out.",
+            options, { combat_items: items.map((i) => i.name) });
     }
 
     // Flee (not allowed in the dungeon)
@@ -473,50 +484,102 @@ function combatAction(choice) {
     return combatState();
 }
 
-// Consumables in the inventory, grouped by name (equipped items excluded).
-function groupConsumables(p) {
-    const grouped = {};
+// Everything the player could reach for mid-fight, best healing potion first.
+// Quest materials and other drops used to be hidden here, which made the list
+// look empty right after a monster dropped something useful.
+function combatItemList(p) {
+    const counts = {};
     p.inventory.forEach((item) => {
-        if (item.category === "item" && item !== p.weapon && item !== p.armor && item !== p.shield) {
-            (grouped[item.name] = grouped[item.name] || []).push(item);
-        }
+        if (item === p.weapon || item === p.armor || item === p.offhand) return;
+        (counts[item.name] = counts[item.name] || []).push(item);
+    });
+
+    const grouped = Object.keys(counts).map((name) => ({
+        name: name,
+        item: counts[name][0],
+        count: counts[name].length,
+        heal: isPotion(name) ? healAmount(name) : 0
+    }));
+
+    grouped.sort(function (a, b) {
+        // Usable healing first, strongest first.
+        if (a.heal && b.heal) return b.heal - a.heal;
+        if (a.heal) return -1;
+        if (b.heal) return 1;
+        // Then the rest alphabetically so the list does not jump around.
+        return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
     });
     return grouped;
+}
+
+function combatItemLabel(entry) {
+    return entry.count > 1 ? entry.name + " x" + entry.count : entry.name;
+}
+
+// Only healing potions work in combat; everything else is shown but refused.
+function itemUsableInCombat(name) {
+    return isPotion(name);
+}
+
+function useItemInCombat(name) {
+    const p = gs.player;
+    const heal = healAmount(name);
+    if (!heal) return { ok: false, message: "Cannot use " + name + " in combat yet." };
+
+    const idx = p.inventory.findIndex((i) => i.name === name);
+    if (idx === -1) return { ok: false, message: "You don't have " + name + " any more." };
+
+    const before = p.hp;
+    p.hp = Math.min(p.hp + heal, p.max_hp);
+    p.inventory.splice(idx, 1);
+    return {
+        ok: true,
+        message: "Drank " + name + "! Restored " + (p.hp - before) + " HP (" +
+            heal + " attempted)."
+    };
 }
 
 function combatItemAction(choice) {
     const p = gs.player;
     const e = gs.enemy;
-    const grouped = groupConsumables(p);
-    const names = Object.keys(grouped);
+    const items = combatItemList(p);
 
-    if (choice >= names.length) {
+    // (Back) is the only thing that leaves this screen - using an item leaves
+    // you standing here so the fight does not jump back to the main menu.
+    if (choice >= items.length) {
         return combatState();
     }
 
-    const item = grouped[names[choice]][0];
-    if (item.name === "Healing Potion") {
-        const heal = 9;
-        p.hp = Math.min(p.hp + heal, p.max_hp);
-        p.remove_item(item);
-        gs.log.push("Drank Healing Potion! Restored " + heal + " HP.");
-    } else if (item.name === "Greater Healing Potion") {
-        const heal = 20;
-        p.hp = Math.min(p.hp + heal, p.max_hp);
-        p.remove_item(item);
-        gs.log.push("Drank Greater Healing Potion! Restored " + heal + " HP.");
-    } else {
-        gs.log.push("Cannot use " + item.name + " in combat yet.");
+    const entry = items[choice];
+    const result = useItemInCombat(entry.name);
 
-        gs.log.push(webEnemyAttack(p, e));
-
-        if (!p.is_alive()) {
-            return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
-        }
-        return combatState();
+    if (result.ok) {
+        gs.log.push(result.message);
+        if (!e.is_alive()) return combatReward("Victory!");
+        // Stay on the Use Item screen; the player presses Back when ready.
+        return combatItemState();
     }
 
-    return combatState();
+    gs.log.push(result.message);
+    gs.log.push(webEnemyAttack(p, e));
+    if (!p.is_alive()) {
+        return respond("game_over", "GAME OVER", "You have died...", ["Return to Menu"]);
+    }
+    return combatItemState();
+}
+
+// The Use Item screen, rebuilt from scratch after every use.
+function combatItemState() {
+    const p = gs.player;
+    const items = combatItemList(p);
+    if (!items.length) {
+        gs.log.push("You have nothing left to use.");
+        return combatState();
+    }
+    const options = items.map((item) => combatItemLabel(item)).concat(["(Back)"]);
+    return respond("combat_item", "Use Item",
+        "Choose an item — strongest healing potion first. Nothing here can be used in combat yet is listed greyed out.",
+        options, { combat_items: items.map((i) => i.name) });
 }
 
 function webPlayerAttack(p, e) {
@@ -533,20 +596,38 @@ function webPlayerAttack(p, e) {
     const atk = roll("1d20") + prof + mod;
 
     if (atk >= e.ac) {
-        let dmg;
+        let dmg = 0;
+        const heavy = twoHandedBonus(p.weapon);
         if (p.weapon) {
-            dmg = Math.max(roll(p.weapon.damage_dice) + mod, 1);
+            dmg = Math.max(roll(p.weapon.damage_dice) + mod + heavy, 1);
         } else {
             dmg = Math.max(1 + mod, 1);
         }
-        e.take_damage(dmg);
-        return "You hit the " + e.name + " for " + dmg + " damage! (d20 + " + prof +
-            " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
+        // The weapon's damage type decides how hard this lands: skeletons
+        // crumble to bludgeoning, slimes shrug off steel.
+        const type = p.weapon ? damageType(p.weapon.damage_type) : null;
+        const result = e.apply_damage(dmg, type);
+        const element = elementOf(p.weapon);
+        const effect = e.inflict_element(element, p);
+
+        let line = "You hit the " + e.name + " for " + result.total + " damage!" +
+            result.note + " (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
+        if (heavy > 0) line += " +" + heavy + " two-handed";
+        if (effect) line += effect;
+        return line;
     }
     return "You missed! (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
 }
 
 function webEnemyAttack(p, e) {
+    // A frozen monster loses its whole turn.
+    if (e.is_frozen()) {
+        e.status.freeze_rounds -= 1;
+        const left = Math.max(0, e.status.freeze_rounds);
+        return e.name + " is frozen solid and cannot attack!" +
+            (left ? " (" + left + " round" + (left > 1 ? "s" : "") + " left)" : "");
+    }
+
     const bonus = Math.floor(e.level / 2) + 2;
     const atk = roll("1d20") + bonus;
 
@@ -558,6 +639,13 @@ function webEnemyAttack(p, e) {
             " = " + atk + " vs your AC " + p.ac + ")";
     }
     return e.name + " missed you! (d20 + " + bonus + " = " + atk + " vs your AC " + p.ac + ")";
+}
+
+// Burns and poison resolve at the top of the monster's turn, before it acts.
+function enemyStatusTurn(p, e) {
+    const lines = e.tick_status();
+    if (!p.is_alive()) return lines;
+    return lines;
 }
 
 function combatReward(title) {
@@ -743,14 +831,14 @@ function sellItem(name) {
         item = p.weapon; p.weapon = null;
     } else if (p.armor && p.armor.name === name) {
         item = p.armor; p.armor = null;
-    } else if (p.shield && p.shield.name === name) {
-        item = p.shield; p.shield = null;
+    } else if (p.offhand && p.offhand.name === name) {
+        item = p.offhand; p.offhand = null;
     } else {
         gs.log = ["You don't have that any more."];
         return back();
     }
 
-    if (item === p.weapon || item === p.armor || item === p.shield) {
+    if (item === p.weapon || item === p.armor || item === p.offhand) {
         p.ac = p.calc_ac();
         p.recalc_hp();
     }
@@ -767,10 +855,13 @@ function showShop(shop_name) {
     Object.keys(shop.items).forEach((n) => {
         if (p.level >= shop.items[n].min_level) available[n] = shop.items[n];
     });
-    const items_list = Object.keys(available).map((n) => n + " (" + available[n].price + "g)");
+    const names = Object.keys(available);
+    const items_list = names.map((n) => n + " (" + available[n].price + "g)");
     return respond("shop", shop_name, "", items_list.concat(["(Back)"]), {
-        shop_items: Object.keys(available),
-        shop_prices: Object.keys(available).map((n) => available[n].price)
+        shop_items: names,
+        shop_prices: names.map((n) => available[n].price),
+        // Only potions get the quantity stepper; everything else is one tap.
+        shop_potions: names.map((n) => isPotion(n))
     });
 }
 
@@ -782,7 +873,7 @@ function showShop(shop_name) {
 function groupStorage(p) {
     const grouped = {};
     p.inventory.forEach((item) => {
-        if (item !== p.weapon && item !== p.armor && item !== p.shield) {
+        if (item !== p.weapon && item !== p.armor && item !== p.offhand) {
             (grouped[item.name] = grouped[item.name] || []).push(item);
         }
     });
@@ -794,7 +885,8 @@ function inventoryState() {
     const lines = [];
     if (p.weapon) lines.push("Weapon: " + p.weapon.name);
     if (p.armor) lines.push("Armor: " + p.armor.name);
-    if (p.shield) lines.push("Shield: " + p.shield.name);
+    if (p.offhand) lines.push("Off-hand: " + p.offhand.name);
+    if (p.hands_full()) lines.push("(both hands are full)");
 
     const grouped = groupStorage(p);
     const storage_lines = Object.keys(grouped).map((name) => {
@@ -805,61 +897,128 @@ function inventoryState() {
     const body = "Equipped:\n  " + (lines.length ? lines.join("\n  ") : "None") +
         "\n\nStorage:\n  " + (storage_lines.length ? storage_lines.join("\n  ") : "(empty)");
 
-    const options = storage_lines.length
-        ? storage_lines.map((n) => "[Use] " + n).concat(["(Close)"])
-        : ["(Close)"];
+    const options = storage_lines.length ? storage_lines.concat(["(Close)"]) : ["(Close)"];
 
     return respond("inventory", "INVENTORY", body, options, {
         inv_items: Object.keys(grouped)
     });
 }
 
+// Selecting an entry no longer equips or drinks anything on the spot - the UI
+// opens a detail panel under it and the player presses Equip or Use there.
 function inventoryAction(choice) {
     const p = gs.player;
-    const grouped = groupStorage(p);
-    const names = Object.keys(grouped);
-
+    const names = Object.keys(groupStorage(p));
     if (!names.length || choice >= names.length) {
         return townRespond(townName(), "What do you want to do?");
     }
+    return inventoryState();
+}
 
-    const item = grouped[names[choice]][0];
-
+// Which slot an item would go into when equipped, and whether it is allowed.
+//
+// Weapons are the interesting case. A two-handed weapon always takes the main
+// hand and hands the off-hand back; a one-handed weapon takes the main hand if
+// it is free, otherwise the off-hand (that is how you end up dual-wielding),
+// and only replaces the main hand once both hands are busy. Keeping the target
+// in one place is what makes the "both hands full" check honest instead of
+// cosmetic.
+function equipTargetFor(p, item) {
     if (item.category === "weapon") {
-        if (p.weapon) p.inventory.push(p.weapon);
-        p.weapon = item;
-        p.remove_item(item);
-        p.ac = p.calc_ac();
-        p.recalc_hp();
-        gs.log = ["Equipped " + item.name + "!"];
-    } else if (item.category === "armor") {
-        if (item.armor_type === "shield") {
-            if (p.shield) p.inventory.push(p.shield);
-            p.shield = item;
-        } else {
-            if (p.armor) p.inventory.push(p.armor);
-            p.armor = item;
-        }
-        p.remove_item(item);
-        p.ac = p.calc_ac();
-        p.recalc_hp();
-        gs.log = ["Equipped " + item.name + "!"];
-    } else if (item.category === "item") {
-        if (item.name === "Healing Potion") {
-            const heal = 9;
-            p.hp = Math.min(p.hp + heal, p.max_hp);
-            p.remove_item(item);
-            gs.log = ["Drank Healing Potion! Restored " + heal + " HP."];
-        } else if (item.name === "Greater Healing Potion") {
-            const heal = 20;
-            p.hp = Math.min(p.hp + heal, p.max_hp);
-            p.remove_item(item);
-            gs.log = ["Drank Greater Healing Potion! Restored " + heal + " HP."];
-        } else {
-            gs.log = ["Cannot use " + item.name + " yet."];
-        }
+        if (isTwoHanded(item)) return "weapon";
+        if (!p.weapon) return "weapon";
+        if (isTwoHanded(p.weapon)) return "weapon";   // main hand owns both
+        if (!p.offhand) return "offhand";
+        return "weapon";
+    }
+    if (item.category === "armor") {
+        if (item.armor_type === "shield") return "offhand";
+        return "armor";
+    }
+    return null;
+}
+
+function equipRefusal(p, item) {
+    const slot = equipTargetFor(p, item);
+    if (!slot) return null;
+    if (slot === "offhand" && !p.can_equip_offhand(item)) {
+        return p.offhand_block_reason() || "That cannot go in your off-hand.";
+    }
+    return null;
+}
+
+// Moves one item out of storage and into its slot. Weapons and armour swap
+// with whatever was there; a two-handed weapon hands the off-hand back.
+function inventoryEquip(name) {
+    const p = gs.player;
+    const idx = p.inventory.findIndex((i) => i.name === name);
+    if (idx === -1) {
+        gs.log = ["You don't have " + name + " any more."];
+        return inventoryState();
+    }
+    const item = p.inventory[idx];
+
+    const refusal = equipRefusal(p, item);
+    if (refusal) {
+        gs.log = [refusal];
+        return inventoryState();
     }
 
+    const slot = equipTargetFor(p, item);
+    p.inventory.splice(idx, 1);
+
+    if (slot === "weapon") {
+        if (p.weapon) p.inventory.push(p.weapon);
+        p.weapon = item;
+        const stowed = isTwoHanded(item) && p.offhand;
+        if (stowed) {
+            p.offhand = null;
+            p.inventory.push(stowed);
+        }
+        p.ac = p.calc_ac();
+        p.recalc_hp();
+        gs.log = ["Equipped " + item.name + "!" +
+            (stowed ? " " + stowed.name + " went back to storage." : "")];
+    } else if (slot === "armor") {
+        if (p.armor) p.inventory.push(p.armor);
+        p.armor = item;
+        p.ac = p.calc_ac();
+        p.recalc_hp();
+        gs.log = ["Equipped " + item.name + "!"];
+    } else if (slot === "offhand") {
+        const old = p.offhand;
+        p.offhand = item;
+        if (old) p.inventory.push(old);
+        p.ac = p.calc_ac();
+        p.recalc_hp();
+        gs.log = ["Equipped " + item.name + (old ? " in your off-hand." : " in your off-hand!")];
+    } else {
+        p.inventory.splice(idx, 0, item);
+        gs.log = ["You cannot equip " + item.name + "."];
+    }
+
+    return inventoryState();
+}
+
+// Drinks a potion out of combat. Deliberately separate from the combat path so
+// the two never drift on how much a potion is worth.
+function inventoryUse(name) {
+    const p = gs.player;
+    const idx = p.inventory.findIndex((i) => i.name === name);
+    if (idx === -1) {
+        gs.log = ["You don't have " + name + " any more."];
+        return inventoryState();
+    }
+    if (!isPotion(name)) {
+        gs.log = ["Cannot use " + name + " yet."];
+        return inventoryState();
+    }
+    const before = p.hp;
+    const heal = healAmount(name);
+    p.hp = Math.min(p.hp + heal, p.max_hp);
+    p.inventory.splice(idx, 1);
+    gs.log = ["Drank " + name + "! Restored " + (p.hp - before) + " HP (" +
+        heal + " attempted)."];
     return inventoryState();
 }
 
@@ -987,6 +1146,7 @@ function dungeonMerchant() {
     return respond("shop", "Dungeon Merchant", "", items_list.concat(["(Back)"]), {
         shop_items: Object.keys(available),
         shop_prices: Object.keys(available).map((n) => available[n].price),
+        shop_potions: Object.keys(available).map((n) => isPotion(n)),
         dungeon_shop: true
     });
 }
@@ -1004,5 +1164,14 @@ const Game = {
     sellItem: sellItem,
     sellPrice: sellPrice,
     mapData: mapData,
-    travel: travel
+    travel: travel,
+    // Called from the inventory detail panel, never from the option list.
+    inventoryEquip: inventoryEquip,
+    inventoryUse: inventoryUse,
+    equipRefusal: function (name) {
+        const p = gs.player;
+        if (!p) return null;
+        const item = getItem(name);
+        return item ? equipRefusal(p, item) : null;
+    }
 };

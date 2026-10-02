@@ -156,6 +156,48 @@
         }
         .shop-buy:hover { background: #dbb95c; }
         .shop-buy:disabled { background: #2e2e33; color: #8a8a8a; cursor: not-allowed; }
+        /* ---------- Quantity stepper (potions only) ---------- */
+        .shop-qty {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            margin-top: 10px; width: 100%;
+        }
+        .shop-qty-label { color: #8a8a8a; font-size: 0.8em; }
+        .qty-btn {
+            background: #1e1e21; color: #d6d6d6; border: 1px solid #2e2e33;
+            padding: 8px 12px; min-height: 38px; font-family: 'Courier New', monospace;
+            font-size: 0.9em; cursor: pointer; border-radius: 4px; transition: 0.15s;
+            touch-action: manipulation;
+        }
+        .qty-btn:hover { border-color: #c9a84c; }
+        .qty-btn.active { background: #c9a84c; color: #0b0b0c; border-color: #c9a84c; }
+        .qty-total { color: #c9a84c; font-size: 0.85em; margin-left: auto; }
+        .qty-total.short { color: #e74c3c; }
+
+        /* ---------- Back button, top left ---------- */
+        #topbar {
+            display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px;
+        }
+        #topbar #screen-title { flex: 1; margin-bottom: 0; }
+        #back-btn {
+            display: none;
+            background: #1e1e21; color: #c9a84c; border: 1px solid #c9a84c;
+            padding: 9px 14px; min-height: 40px; font-family: 'Courier New', monospace;
+            font-size: 0.85em; cursor: pointer; border-radius: 4px;
+            transition: 0.2s; touch-action: manipulation; flex: 0 0 auto;
+            white-space: nowrap;
+        }
+        #back-btn:hover { background: #c9a84c; color: #0b0b0c; }
+        #back-btn.selected { box-shadow: inset 0 -3px 0 #c9a84c; }
+
+        /* ---------- Inventory detail panel (same look as the shop) ---------- */
+        #options.inv { gap: 4px; }
+        .inv-item { width: 100%; }
+        .inv-item:disabled { color: #6a6a70; cursor: not-allowed; }
+        .inv-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .inv-blocked { color: #e74c3c; font-size: 0.8em; margin-top: 8px; }
+
+        /* ---------- Combat item list ---------- */
+        .combat-item-disabled { color: #6a6a70; }
         .hint { color: #6a6a70; font-size: 0.72em; margin-top: 8px; text-align: right; }
         #log {
             margin-top: 15px;
@@ -332,7 +374,10 @@
     <header><h1>⚔ DUNGEONS & DRAGONS ⚔</h1></header>
     <div id="main">
         <div id="left">
-            <div id="screen-title"></div>
+            <div id="topbar">
+                <button id="back-btn" data-back="1">&larr; Back</button>
+                <div id="screen-title"></div>
+            </div>
             <div id="combat-stage"></div>
             <div id="screen-body"></div>
             <div id="options"></div>
@@ -352,19 +397,8 @@
             <p><span class="stat">XP</span> <span class="val" id="p-xp">-</span></p>
             <div id="xp-bar"><div id="xp-fill"></div></div>
             <p><span class="stat">Weapon</span> <span class="val" id="p-weapon">-</span></p>
+            <p><span class="stat">Off-hand</span> <span class="val" id="p-offhand">-</span></p>
             <p><span class="stat">Armor</span> <span class="val" id="p-armor">-</span></p>
-        </div>
-    </div>
-</div>
-
-<div id="buy-overlay">
-    <div id="buy-box">
-        <h3 id="buy-title">Buy</h3>
-        <p id="buy-info" style="margin-bottom:12px;color:#8a8a8a;"></p>
-        <div><input type="number" id="buy-qty" value="1" min="1"></div>
-        <div style="margin-top:12px;">
-            <button onclick="buyConfirm()">Buy</button>
-            <button onclick="hideBuy()">Cancel</button>
         </div>
     </div>
 </div>
@@ -818,11 +852,16 @@ function clickOption(index) {
 }
 
 function moveSelection(step) {
-    const btns = document.querySelectorAll("#options button[data-opt]");
+    // The back button lives outside #options but takes part in keyboard nav.
+    const btns = document.querySelectorAll("[data-opt]");
     if (!btns.length) return;
-    selectedIndex = (selectedIndex + step + btns.length) % btns.length;
-    btns.forEach(function (b, i) { b.classList.toggle("selected", i === selectedIndex); });
-    btns[selectedIndex].scrollIntoView({ block: "nearest" });
+    const list = Array.prototype.slice.call(btns);
+    const current = list.findIndex((b) => b.classList.contains("selected"));
+    const from = current === -1 ? selectedIndex : current;
+    const next = (from + step + list.length) % list.length;
+    list.forEach((b, i) => { b.classList.toggle("selected", i === next); });
+    selectedIndex = Number(list[next].getAttribute("data-opt"));
+    list[next].scrollIntoView({ block: "nearest" });
 }
 
 document.addEventListener("keydown", function (ev) {
@@ -844,6 +883,16 @@ document.addEventListener("keydown", function (ev) {
     }
 });
 
+// Top-left back button: runs exactly whatever the trailing list entry runs.
+document.getElementById("back-btn").addEventListener("click", function () {
+    const i = backIndexFor(currentState || { options: [] });
+    if (i === -1) return;
+    selectedIndex = i;
+    openShopItem = null;
+    openInvItem = null;
+    handleClick(currentState.screen, i);
+});
+
 // -----------------------------
 // Shop list with inline item details
 // Clicking an item expands a panel under it; "Buy" is always exactly one item
@@ -861,6 +910,12 @@ function itemStatRows(name) {
 
     if (it.category === "weapon") {
         rows.push(["Damage", it.damage_dice + " " + String(it.damage_type).replace(/_/g, " ")]);
+        const heavy = twoHandedBonus(it);
+        if (heavy > 0) rows.push(["Two-handed", "+" + heavy + " damage per hit"]);
+        const element = elementOf(it);
+        if (element === "fire") rows.push(["Element", "sets the target alight for 2 rounds (INT scales)"]);
+        else if (element === "ice") rows.push(["Element", "may freeze the target solid (INT scales)"]);
+        else if (element === "poison") rows.push(["Element", "may poison the target (DEX scales, lasts until it dies)"]);
         if (it.properties && it.properties.length) {
             rows.push(["Properties", it.properties.join(", ")]);
         }
@@ -882,16 +937,19 @@ function itemStatRows(name) {
 // formula as Player.calc_ac() so the preview can never lie.
 function acPreview(player, item) {
     if (!player || !item) return null;
-    const gear = { weapon: player.weapon, armor: player.armor, shield: player.shield };
+    const gear = { weapon: player.weapon, armor: player.armor, offhand: player.offhand };
     if (item.category === "armor") {
-        if (item.armor_type === "shield") gear.shield = item;
+        if (item.armor_type === "shield") gear.offhand = item;
         else gear.armor = item;
     } else if (item.category === "weapon") {
         gear.weapon = item;
+        // A two-handed weapon cannot keep a shield, so the preview drops it -
+        // otherwise the panel would promise an illegal combination.
+        if (isTwoHanded(item)) gear.offhand = null;
     }
 
     const bonus = {};
-    ["weapon", "armor", "shield"].forEach((slot) => {
+    ["weapon", "armor", "offhand"].forEach((slot) => {
         const it = gear[slot];
         if (it) {
             for (const st in it.stats_bonus) bonus[st] = (bonus[st] || 0) + it.stats_bonus[st];
@@ -907,7 +965,7 @@ function acPreview(player, item) {
     } else {
         ac = 10 + dexMod;
     }
-    if (gear.shield) ac += gear.shield.base_ac;
+    if (gear.offhand && gear.offhand.armor_type === "shield") ac += gear.offhand.base_ac;
     return ac;
 }
 
@@ -957,16 +1015,20 @@ function groupInventoryForSell(p) {
 // Would selling this leave the player with nothing of its kind?
 function isLastOfItsKind(p, item) {
     const slot = item.category === "weapon" ? "weapon"
-        : (item.armor_type === "shield" ? "shield" : "armor");
+        : (item.armor_type === "shield" ? "offhand" : "armor");
     const equipped = p[slot] && p[slot].name === item.name;
     const owned = (p.inventory.filter((i) => i.name === item.name).length) + (equipped ? 1 : 0);
     return owned <= 1 && (item.category === "weapon" || item.category === "armor");
 }
 
 function sellWarningText(kind) {
-    return kind === "weapon"
-        ? "That is your last weapon - you will have nothing equipped!"
-        : "That is your last piece of armour - you will have nothing equipped!";
+    if (kind === "weapon") {
+        return "That is your last weapon - you will have nothing equipped!";
+    }
+    if (kind === "offhand") {
+        return "That is your last shield or spare weapon - your off-hand will be empty!";
+    }
+    return "That is your last piece of armour - you will have nothing equipped!";
 }
 
 function renderShopSell(s, opts) {
@@ -977,7 +1039,7 @@ function renderShopSell(s, opts) {
     if (!p) return;
     const grouped = groupInventoryForSell(p);
     const equipped = [];
-    ["weapon", "armor", "shield"].forEach((slot) => {
+    ["weapon", "armor", "offhand"].forEach((slot) => {
         const it = p[slot];
         if (it && !grouped[it.name]) equipped.push(it);
     });
@@ -1009,7 +1071,7 @@ function renderShopSell(s, opts) {
         btn.textContent = "> " + label + (isEquipped ? " (equipped)" : "");
         btn.addEventListener("click", () => {
             if (isLastOfItsKind(p, { category: kind === "weapon" ? "weapon" : "armor",
-                                     armor_type: kind === "shield" ? "shield" : "armor",
+                                     armor_type: kind === "offhand" ? "shield" : "armor",
                                      name: label })) {
                 pendingSell = { item: label, price: price, kind: kind };
                 renderOptions(currentState);
@@ -1062,14 +1124,14 @@ function renderShopSell(s, opts) {
 
     equipped.forEach((it) => {
         const kind = it.category === "weapon" ? "weapon"
-            : (it.armor_type === "shield" ? "shield" : "armor");
+            : (it.armor_type === "shield" ? "offhand" : "armor");
         addRow(it.name, sellPrice(it.name), kind, true);
     });
     Object.keys(grouped).forEach((name) => {
         const list = grouped[name];
         const it = list[0];
         const kind = it.category === "weapon" ? "weapon"
-            : (it.category === "item" ? "item" : (it.armor_type === "shield" ? "shield" : "armor"));
+            : (it.category === "item" ? "item" : (it.armor_type === "shield" ? "offhand" : "armor"));
         const label = list.length > 1 ? name + " x" + list.length : name;
         if (kind === "item") {
             // Quest materials and anything else unsellable; potions are fine.
@@ -1142,18 +1204,13 @@ function renderOptions(s) {
         head.textContent = "You have " + gold + "g — tap an item to see what it gives you";
         opts.appendChild(head);
 
-        const backIndex = s.options.length - 1;
+        const backIndex = backIndexFor(s);
         s.options.forEach((label, i) => {
-            if (i === backIndex) {
-                const back = document.createElement("button");
-                back.setAttribute("data-opt", i);
-                back.textContent = "> " + label;
-                back.addEventListener("click", () => { selectedIndex = i; doAction(i); });
-                opts.appendChild(back);
-                return;
-            }
+            // The back entry is drawn in the top-left corner, not down here.
+            if (i === backIndex) return;
             const name = s.shop_items[i];
             const price = s.shop_prices[i];
+            const isPotionItem = (s.shop_potions || [])[i] === true;
 
             const row = document.createElement("div");
             row.className = "shop-row";
@@ -1174,30 +1231,233 @@ function renderOptions(s) {
                 panel.className = "shop-detail";
                 panel.innerHTML = shopDetailHtml(name, price, s.player);
 
-                const buy = document.createElement("button");
-                buy.className = "shop-buy";
-                buy.textContent = "Buy · " + price + "g";
-                buy.disabled = gold < price;
-                buy.title = gold < price ? "Not enough gold" : "Buy one " + name;
-                buy.addEventListener("click", (ev) => {
+                // Potions stack, so they get a quantity stepper. Everything else
+                // is a single tap - you do not buy four longswords at once.
+                let qty = 1;
+                let stepper = null;
+                let buyBtn = null;
+                let totalLabel = null;
+
+                const syncBuy = () => {
+                    const total = price * qty;
+                    buyBtn.textContent = "Buy " + qty + " × · " + total + "g";
+                    buyBtn.disabled = gold < total;
+                    buyBtn.title = gold < total ? "Not enough gold" : "Buy " + qty + " × " + name;
+                    if (totalLabel) {
+                        totalLabel.textContent = total + "g total";
+                        totalLabel.classList.toggle("short", gold < total);
+                    }
+                };
+
+                const makeStepper = () => {
+                    const box = document.createElement("div");
+                    box.className = "shop-qty";
+                    const label = document.createElement("span");
+                    label.className = "shop-qty-label";
+                    label.textContent = "Quantity:";
+                    box.appendChild(label);
+
+                    // "Max" is how many the player's gold can cover, capped so the
+                    // list stays short on a rich character.
+                    const maxAffordable = Math.max(1, Math.min(99, Math.floor(gold / price)));
+                    const choices = [1, 5, 10, 20, maxAffordable];
+                    const buttons = [];
+
+                    const setQty = (n, btn) => {
+                        qty = n;
+                        buttons.forEach((b) => b.classList.toggle("active", b === btn));
+                        syncBuy();
+                    };
+
+                    choices.forEach((n, i) => {
+                        const b = document.createElement("button");
+                        b.className = "qty-btn";
+                        b.textContent = i === choices.length - 1 ? "Max " + n : String(n);
+                        b.addEventListener("click", (ev) => { ev.stopPropagation(); setQty(n, b); });
+                        box.appendChild(b);
+                        buttons.push(b);
+                    });
+                    setQty(1, buttons[0]);
+
+                    const total = document.createElement("span");
+                    total.className = "qty-total";
+                    total.textContent = price + "g total";
+                    totalLabel = total;
+                    box.appendChild(total);
+                    return box;
+                };
+
+                buyBtn = document.createElement("button");
+                buyBtn.className = "shop-buy";
+                syncBuy();
+                buyBtn.addEventListener("click", (ev) => {
                     ev.stopPropagation();
                     openShopItem = null;
-                    doShopBuy(name, 1);   // always exactly one
+                    doShopBuy(name, qty);
                 });
-                panel.appendChild(buy);
+
+                if (isPotionItem) {
+                    stepper = makeStepper();
+                    panel.appendChild(stepper);
+                    panel.appendChild(buyBtn);
+                } else {
+                    buyBtn.textContent = "Buy · " + price + "g";
+                    buyBtn.disabled = gold < price;
+                    buyBtn.title = gold < price ? "Not enough gold" : "Buy one " + name;
+                    panel.appendChild(buyBtn);
+                }
                 row.appendChild(panel);
             }
             opts.appendChild(row);
         });
+        renderBackButton(s);
         return;
     }
 
+    if (s.screen === "combat_item") {
+        renderCombatItems(s, opts);
+        renderBackButton(s);
+        return;
+    }
+
+    if (s.screen === "inventory" && s.inv_items) {
+        renderInventoryList(s, opts);
+        renderBackButton(s);
+        return;
+    }
+
+    const backIndex = backIndexFor(s);
     s.options.forEach((opt, i) => {
+        if (i === backIndex) return;
         const btn = document.createElement("button");
         btn.setAttribute("data-opt", i);
         btn.textContent = `> ${opt}`;
         btn.classList.toggle("selected", i === selectedIndex);
         btn.addEventListener("click", () => { selectedIndex = i; handleClick(s.screen, i); });
+        opts.appendChild(btn);
+    });
+    renderBackButton(s);
+}
+
+// -----------------------------
+// Inventory: tap an item, then Equip or Use it
+// -----------------------------
+// Mirrors the shop panel exactly - selecting an entry never changes anything by
+// itself, it just reveals the buttons.
+
+let openInvItem = null;
+
+function renderInventoryList(s, opts) {
+    opts.classList.add("inv");
+    const p = gs.player;
+    if (!p) return;
+
+    const backIndex = backIndexFor(s);
+    s.options.forEach((label, i) => {
+        if (i === backIndex) return;
+        const name = s.inv_items[i];
+        const item = getItem(name);
+        const isPotionItem = isPotion(name);
+
+        const row = document.createElement("div");
+        row.className = "shop-row";
+
+        const btn = document.createElement("button");
+        btn.className = "inv-item";
+        btn.setAttribute("data-opt", i);
+        btn.textContent = "> " + label;
+        btn.setAttribute("aria-expanded", openInvItem === i ? "true" : "false");
+        btn.addEventListener("click", () => {
+            selectedIndex = i;
+            openInvItem = (openInvItem === i) ? null : i;
+            renderOptions(currentState);
+        });
+        row.appendChild(btn);
+
+        if (openInvItem === i && item) {
+            const panel = document.createElement("div");
+            panel.className = "shop-detail";
+
+            let extra = "";
+            if (item.category === "weapon" || item.category === "armor") {
+                const now = p.ac;
+                const then = acPreview(p, item);
+                if (then !== null && then !== now) {
+                    extra += '<p class="flavour">AC ' + now +
+                        ' <span class="' + (then > now ? "good" : "") + '">&rarr; ' + then + "</span></p>";
+                }
+            }
+            const refusal = Game.equipRefusal(name);
+            if (refusal) {
+                extra += '<p class="inv-blocked">' + refusal + "</p>";
+            }
+            panel.innerHTML = '<div class="shop-detail-info">' +
+                '<div class="shop-detail-name">' + name + "</div>" +
+                "<dl>" + itemStatRows(name).map((r) =>
+                    "<dt>" + r[0] + "</dt><dd>" + r[1] + "</dd>").join("") + "</dl>" +
+                extra + "</div>";
+
+            const actions = document.createElement("div");
+            actions.className = "inv-actions";
+
+            if (item.category === "weapon" || item.category === "armor") {
+                const eq = document.createElement("button");
+                eq.className = "shop-buy";
+                eq.textContent = "Equip";
+                eq.disabled = !!refusal;
+                eq.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    openInvItem = null;
+                    render(Game.inventoryEquip(name));
+                });
+                actions.appendChild(eq);
+            }
+            if (isPotionItem) {
+                const use = document.createElement("button");
+                use.className = "shop-buy";
+                use.textContent = "Use (" + healAmount(name) + " HP)";
+                use.style.background = "#2fbf71";
+                use.addEventListener("click", (ev) => {
+                    ev.stopPropagation();
+                    openInvItem = null;
+                    render(Game.inventoryUse(name));
+                });
+                actions.appendChild(use);
+            }
+            if (!actions.childNodes.length) {
+                const none = document.createElement("span");
+                none.className = "shop-detail .flavour";
+                none.textContent = "Nothing you can do with this yet.";
+                actions.appendChild(none);
+            }
+            panel.appendChild(actions);
+            row.appendChild(panel);
+        }
+        opts.appendChild(row);
+    });
+}
+
+// -----------------------------
+// Combat: every item is listed, but only potions can be used
+// -----------------------------
+function renderCombatItems(s, opts) {
+    const names = s.combat_items || [];
+    const backIndex = backIndexFor(s);
+
+    s.options.forEach((label, i) => {
+        if (i === backIndex) return;
+        const name = names[i];
+        const usable = name ? isPotion(name) : false;
+
+        const btn = document.createElement("button");
+        btn.setAttribute("data-opt", i);
+        btn.className = usable ? "" : "combat-item-disabled";
+        btn.textContent = (usable ? "> " : "> ") + label;
+        if (!usable) {
+            btn.title = "Cannot be used in combat";
+        } else {
+            btn.addEventListener("click", () => { selectedIndex = i; doAction(i); });
+        }
         opts.appendChild(btn);
     });
 }
@@ -1210,7 +1470,7 @@ function toggleShopItem(i) {
 function render(s) {
     const prevScreen = currentState ? currentState.screen : null;
     currentState = s;
-    if (prevScreen !== s.screen) { selectedIndex = 0; openShopItem = null; }
+    if (prevScreen !== s.screen) { selectedIndex = 0; openShopItem = null; openInvItem = null; }
     document.getElementById("screen-title").textContent = s.title || "";
 
     const body = document.getElementById("screen-body");
@@ -1250,6 +1510,7 @@ function render(s) {
         document.getElementById("p-gold").textContent = p.gold;
         document.getElementById("p-xp").textContent = p.xp + "/" + p.xp_to_next;
         document.getElementById("p-weapon").textContent = p.weapon;
+        document.getElementById("p-offhand").textContent = p.offhand || "-";
         document.getElementById("p-armor").textContent = p.armor;
 
         const hpPct = p.max_hp > 0 ? (p.hp / p.max_hp * 100) : 0;
@@ -1300,14 +1561,20 @@ function handleClick(screen, index) {
         doAction(index);
     }
     else if (screen === "shop") {
-        if (index === currentState.options.length - 1) {
+        // Keyboard and mouse now do exactly the same thing: both open the
+        // inline panel. Only the trailing back entry runs its action.
+        if (index === backIndexFor(currentState)) {
             doAction(index);
         } else {
             showBuy(index);
         }
     }
     else if (screen === "inventory") {
-        doAction(index);
+        if (index === backIndexFor(currentState)) {
+            doAction(index);
+        } else {
+            doAction(index);   // opens the detail panel client-side
+        }
     }
     else if (screen === "location") {
         doAction(index);
@@ -1327,23 +1594,39 @@ function handleClick(screen, index) {
 }
 
 function showBuy(index) {
-    buyItemName = currentState.shop_items[index];
-    const price = currentState.shop_prices[index];
-    document.getElementById("buy-title").textContent = buyItemName;
-    document.getElementById("buy-info").textContent = price + " gold each";
-    document.getElementById("buy-qty").value = 1;
-    document.getElementById("buy-overlay").style.display = "flex";
+    // Kept only so a stale keyboard path cannot 404: buying now happens in the
+    // inline panel, exactly as it does with the mouse.
+    toggleShopItem(index);
 }
 
-function buyConfirm() {
-    const qty = parseInt(document.getElementById("buy-qty").value) || 1;
-    if (qty < 1) return;
-    doShopBuy(buyItemName, qty);
-    hideBuy();
+// -----------------------------
+// Back button
+// -----------------------------
+// The trailing "(Back)" / "(Close)" entry of every list lives in the top-left
+// corner instead of at the bottom. It stays in the options array so the
+// keyboard still reaches it, but it is no longer drawn in the list.
+function backIndexFor(s) {
+    if (!s.options || !s.options.length) return -1;
+    const last = s.options[s.options.length - 1];
+    return /^\((Back|Close)\)/i.test(String(last).trim()) ? s.options.length - 1 : -1;
 }
 
-function hideBuy() {
-    document.getElementById("buy-overlay").style.display = "none";
+const backBtn = document.getElementById("back-btn");
+
+function renderBackButton(s) {
+    const i = backIndexFor(s);
+    if (i === -1) {
+        backBtn.style.display = "none";
+        backBtn.removeAttribute("data-opt");
+        return;
+    }
+    // An explicit value is required here: the stylesheet defaults the button to
+    // display:none, so clearing the inline style would leave it hidden.
+    backBtn.style.display = "inline-block";
+    backBtn.setAttribute("data-opt", i);
+    backBtn.classList.toggle("selected", selectedIndex === i);
+    const label = String(s.options[i]).trim();
+    backBtn.textContent = label.indexOf("Close") === -1 ? "← Back" : "← Close";
 }
 
 loadMapData();
