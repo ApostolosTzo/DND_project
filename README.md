@@ -2,7 +2,83 @@
 
 A browser-based Dungeons & Dragons-style RPG. Features a world map, dungeon crawling, turn-based combat, character progression with a flexible skill point system, and NPC shops.
 
-It runs two ways: as a **Flask web app** (Python backend) or as a **static Progressive Web App** that installs to your phone/desktop and plays fully offline.
+It runs two ways: as a **Flask web app** (Python backend) or as a **static Progressive Web App** that installs to your phone/desktop and plays fully offline. That means the same game exists twice in this repo — once in Python, once in JavaScript. [Why both exist](#why-there-are-two-builds) explains where that came from and what it means for you.
+
+## Why there are two builds
+
+This repo contains **one game, implemented twice**:
+
+| | Python build | JavaScript build |
+|---|---|---|
+| Files | `*.py` in the root | `js/*.js` |
+| Needs a server | **Yes** — Flask runs on a machine | **No** — pure static files |
+| Runs at | `http://localhost:5000` | `https://dnd-project-ekf.pages.dev` |
+| Installs to a phone | No | **Yes**, as a Progressive Web App |
+| Plays offline | Only while the server is running | **Yes**, fully |
+| Saves go | JSON files in `saves/` | `localStorage` in the browser |
+| This is | the development build | **the deployed game** |
+
+### Why it ended up this way
+
+The game started as a Python console project, then grew a Flask server so it could run in a browser. The natural next step was to put it online and install it on a phone.
+
+**That is where the split happened.** Static hosts — Cloudflare Pages, and GitHub Pages before it — can only serve files. They cannot run Python. A site like that has no backend, so a Flask app cannot be deployed there at all; it would need a separate paid server that stays running.
+
+So the game logic was **ported once into JavaScript**. `js/game.js` is `game_server.py` running in the browser, `js/items.js` is `items.py`, and so on. Same rules, same numbers, same catalogue — just no server. Each file is named after the Python file it replaces, and its first line says so:
+
+```js
+// items.py - Weapon / Armor / Item definitions, catalog and starting gear.
+```
+
+| JavaScript | Replaces | Lines |
+|---|---|---|
+| `js/game.js` | `game_server.py` — the whole state machine | 1177 |
+| `js/items.js` | `items.py` — the catalogue | 319 |
+| `js/player.js` | `player.py` — stats, equipment, off-hand rules | 257 |
+| `js/enemy.js` | `enemy.py` — monsters, damage types, status effects | 251 |
+| `js/shop.js` | `shop.py` — NPC stock and prices | 155 |
+| `js/saves.js` | `save_load.py` — multi-save | 97 |
+| `js/quests.js` | `quests.py` | 64 |
+| `js/dice.js` | `dice.py` | 46 |
+| `js/world_map.js` | `world_map.py` | 36 |
+
+`index.html` loads those nine files with `<script>` tags in that order, then draws the game on screen.
+
+### Why keep the Python version at all?
+
+Three reasons, in order of importance:
+
+1. **The Python build is where changes are easiest to make and test.** It runs with one command and no browser involved, which makes it the quickest place to try a rule out.
+2. **It is a working fallback.** If the browser build ever breaks badly, `py ./game_server.py` still gives you the whole game in a browser tab.
+3. **It is the original.** Half the design decisions in `PROGRESS.md` were made against it, so keeping it means the history of the game stays readable.
+
+The JavaScript build is the one that ships, but the Python is maintained alongside it rather than abandoned.
+
+### The cost: changes must be made twice
+
+This is the real cost of the arrangement, and it is worth understanding before you edit anything. **A change to the game rules usually needs writing in both places.** Add a sword in `items.py` and it does not exist in the game anyone plays.
+
+The dangerous cases are silent rather than loud. A shop listing an item the catalogue doesn't define does not crash — a guard turns it into *"That item is not available."* and the player just cannot buy the thing. A new stat that only exists in Python is a stat that silently does nothing in the deployed game.
+
+Because of this, every change is checked with a **parity script** that compares all 114 items field by field between `items.py` and `js/items.js`, plus both shop definitions and both location graphs. Any drift is reported as a list of differences rather than failing on the first one.
+
+### Which one should you edit?
+
+**Both.** See [Working on the Code](#working-on-the-code) for the specific files to touch. The short version:
+
+| You want to change | Edit |
+|---|---|
+| An item or its stats | `items.py` **and** `js/items.js` |
+| What an NPC sells | `shop.py` **and** `js/shop.js` |
+| A monster or a damage rule | `enemy.py` **and** `js/enemy.js` |
+| Stats, HP, AC, equipping | `player.py` **and** `js/player.js` |
+| A quest | `quests.py` **and** `js/quests.js` |
+| The map | `world_map.py` **and** `js/world_map.js` |
+| How a fight resolves | `game_server.py` **and** `js/game.js` |
+| How the screen looks | `index.html` **and** `templates/index.html` |
+| Offline caching | `sw.js` only — the Python build has no offline mode |
+
+> **Always bump `CACHE_VERSION` in `sw.js` after editing anything in `js/`.** Those files are cached cache-first by the service worker, so without a bump returning players — your phone — keep running the old code even after the new one has deployed. That single line is the whole update mechanism for game-code changes.
 
 ## Current Features
 
@@ -17,7 +93,7 @@ It runs two ways: as a **Flask web app** (Python backend) or as a **static Progr
 - **9 enemy types** — Zombie, Skeleton, Spider, Wolf, Goblin, Slime, Ghost, plus Demon Lord and Elder Dragon (bosses only)
 - **Monster portraits** — original hand-drawn SVG for all 9 monsters; they lurch when hit and distort as they lose HP
 - **Skill point leveling** — 1 skill point per level, 5 points on levels 4/8/12/…, freely distribute across all 6 stats
-- **Stat effects** — STR (melee damage), DEX (ranged/finesse damage + AC), CON (max HP), INT/WIS/CHA (placeholder)
+- **Stat effects** — STR (melee damage), DEX (ranged/finesse damage, AC, poison chance), CON (max HP), INT (burn damage, freeze duration). WIS/CHA are still placeholders
 - **Equipment with stat bonuses** — weapons and armor can boost STR/DEX/CON/INT, affecting damage, AC, and HP
 - **AC calculation** — light (DEX), medium (DEX capped at 2), heavy (no DEX), shield (+2)
 - **Damage types matter** — slashing, bludgeoning, piercing, fire, ice, lightning, dark, force and poison. Every monster is weak to some (x1.5) and resists others (x0.5)
@@ -427,11 +503,13 @@ DND_project/
 └── saves/               # Save files directory (Flask build only)
 ```
 
-The Python files power the Flask build (`py ./game_server.py`); `js/` is a port of them so the same game runs as a static PWA. Change both when you change game rules.
+The Python files power the Flask build (`py ./game_server.py`); `js/` is a port of them so the same game runs as a static PWA. The reasoning is in [Why there are two builds](#why-there-are-two-builds) — change both when you change game rules.
 
 ## Working on the Code
 
-This repo holds **two implementations of one game**, so a few rules keep them honest:
+This repo holds **two implementations of one game** (see
+[Why there are two builds](#why-there-are-two-builds)), so a few rules keep them
+honest:
 
 | Rule | Why |
 |---|---|
@@ -450,7 +528,9 @@ This repo holds **two implementations of one game**, so a few rules keep them ho
 - Quest system (objectives and rewards)
 - Crafting system (craft from enemy drops)
 - More items, races, classes
-- Skills and spells in combat (INT/WIS are currently placeholders)
+- Skills and spells in combat (INT and WIS now drive elemental weapons; both are otherwise still placeholders)
+- Off-hand attacks — a second weapon currently gives AC and stats but no extra attack
+- Status effects on the player — fire, ice and poison only work on monsters for now
 - Sell back items to shops
 - Difficulty scaling options
 - Possibly: a minimum starting-HP floor or a heal between fights — see the death-rate table in `PROGRESS.md`
