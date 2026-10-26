@@ -42,9 +42,10 @@ So the game logic was **ported once into JavaScript**. `js/game.js` is `game_ser
 | `js/saves.js` | `save_load.py` — multi-save | 97 |
 | `js/quests.js` | `quests.py` | 64 |
 | `js/dice.js` | `dice.py` | 46 |
+| `js/game_data.js` | **generated** from the `*.py` modules by `tools/gen_js_data.py` | 45,765 B |
 | `js/world_map.js` | `world_map.py` | 36 |
 
-`index.html` loads those nine files with `<script>` tags in that order, then draws the game on screen.
+`index.html` loads those ten files with `<script>` tags in that order - `js/game_data.js` in the middle is **generated**, the one file in `js/` you never edit - then draws the game on screen.
 
 ### Why keep the Python version at all?
 
@@ -58,11 +59,21 @@ The JavaScript build is the one that ships, but the Python is maintained alongsi
 
 ### The cost: changes must be made twice
 
-This is the real cost of the arrangement, and it is worth understanding before you edit anything. **A change to the game rules usually needs writing in both places.** Add a sword in `items.py` and it does not exist in the game anyone plays.
+This is the real cost of the arrangement, and it is worth understanding before you edit anything. **A behaviour change usually needs writing in both places** - there is no shared runtime. **A data change does not**: a sword added to `items.py` reaches both builds as soon as `py tools/gen_js_data.py` re-runs.
 
 The dangerous cases are silent rather than loud. A shop listing an item the catalogue doesn't define does not crash — a guard turns it into *"That item is not available."* and the player just cannot buy the thing. A new stat that only exists in Python is a stat that silently does nothing in the deployed game.
 
-Because of this, every change is checked with a **parity script** that compares all 114 items field by field between `items.py` and `js/items.js`, plus both shop definitions and both location graphs. Any drift is reported as a list of differences rather than failing on the first one.
+Because of this, every change is checked by **three suites** in `tools/`, all deterministic and safe to run on a whim:
+
+| Suite | Command | Proves |
+|---|---|---|
+| Data freshness + logic parity | `py tools/parity_check.py` | `js/game_data.js` matches the Python modules **and** both builds compute the same answer for the same input, across 11 groups (damage math, healing, selling, element riders, class gates, ...) |
+| PWA behaviour | `node tools/js_suite.js` | the real `game.js` passes 59 checks: create, shop, fight, rewards, element riders, potions, two-handed, save/load |
+| Flask behaviour | `py tools/flask_suite.py` | the real routes pass 79 checks covering the same flows, driven through the Flask test client |
+
+Catalogue data cannot silently drift any more: it exists once, in Python, and `py tools/gen_js_data.py` writes `js/game_data.js` from it. Edit the Python, regen - the freshness check fails loudly if someone forgets.
+
+The **UI** used to be the other silent case - `index.html` and `templates/index.html` were two hand-maintained copies of the same page. It is now arranged like data: one source in `tools/shells/`, `py tools/gen_html_shells.py` assembles both shells, and `py tools/check_docs.py` fails loudly when a shell is stale.
 
 ### Which one should you edit?
 
@@ -70,17 +81,19 @@ Because of this, every change is checked with a **parity script** that compares 
 
 | You want to change | Edit |
 |---|---|
-| An item or its stats | `items.py` **and** `js/items.js` |
-| What an NPC sells | `shop.py` **and** `js/shop.js` |
-| A monster or a damage rule | `enemy.py` **and** `js/enemy.js` |
-| Stats, HP, AC, equipping | `player.py` **and** `js/player.js` |
-| A quest | `quests.py` **and** `js/quests.js` |
-| The map | `world_map.py` **and** `js/world_map.js` |
+| An item or its stats | `items.py`, then `py tools/gen_js_data.py` |
+| What an NPC sells | `shop.py`, then `py tools/gen_js_data.py` |
+| A monster, its stats, drops or rewards | `enemy.py`, then `py tools/gen_js_data.py` |
+| Races, classes or starting numbers | `player.py`, then `py tools/gen_js_data.py` |
+| A damage or combat rule | `enemy.py` **and** `js/enemy.js` |
+| How stats, HP, AC or equipping **behave** | `player.py` **and** `js/player.js` |
 | How a fight resolves | `game_server.py` **and** `js/game.js` |
-| How the screen looks | `index.html` **and** `templates/index.html` |
-| Offline caching | `sw.js` only — the Python build has no offline mode |
+| A quest | `quests.py` **and** `js/quests.js` |
+| The map's locations and links | `world_map.py`, then `py tools/gen_js_data.py` |
+| How the screen looks | `tools/shells/` (design + page script + adapters), then `py tools/gen_html_shells.py` - both HTML shells are generated |
+| Offline caching | `sw.js` only - the Python build has no offline mode |
 
-> **Always bump `CACHE_VERSION` in `sw.js` after editing anything in `js/`.** Those files are cached cache-first by the service worker, so without a bump returning players — your phone — keep running the old code even after the new one has deployed. That single line is the whole update mechanism for game-code changes.
+> **Always bump `CACHE_VERSION` in `sw.js` after editing anything in `js/`, the root `index.html`, or `tools/shells/`.** All of it lands inside the precached `index.html` and is served cache-first by the service worker, so without a bump returning players - your phone - keep running the old code even after the new one has deployed. That single line is the whole update mechanism for game-code changes.
 
 ## Current Features
 
@@ -482,7 +495,7 @@ The nine monster portraits keep their own colours (they are creatures, not chrom
 
 ```
 DND_project/
-├── index.html           # PWA client (static build, Cloudflare Pages entry point)
+├── index.html           # GENERATED PWA shell (from tools/shells/) - Pages entry point
 ├── manifest.json        # Web app manifest (name, icons, colours)
 ├── sw.js                # Service worker (offline cache)
 ├── _headers             # Cloudflare Pages cache-control rules
@@ -513,10 +526,13 @@ DND_project/
 ├── GAME_GUIDE.md         # Player guide: cheat sheet, counters, every item
 ├── tools/
 │   ├── gen_game_guide.py  # Regenerates GAME_GUIDE.md from the catalogue
-│   └── audit_guide.py    # Checks the guide's hand-written claims vs the catalogue
+│   ├── audit_guide.py    # Checks the guide's hand-written claims vs the catalogue
+│   ├── gen_html_shells.py # Assembles both HTML shells from tools/shells/
+│   ├── check_docs.py     # Fails when AGENTS.md or either shell is stale
+│   └── shells/           # The UI sources: codex.css, shared_page.js, adapters
 ├── PROGRESS.md          # Development changelog and analysis
 ├── templates/
-│   └── index.html       # Browser UI for the Flask build
+│   └── index.html       # GENERATED Flask shell (from tools/shells/)
 └── saves/               # Save files directory (Flask build only)
 ```
 
@@ -530,12 +546,31 @@ honest:
 
 | Rule | Why |
 |---|---|
-| Change game rules in **both** `*.py` and `js/*.js` | The Flask build and the PWA build ship side by side; a one-sided change makes them disagree |
-| New items: define in `items.py` **and** `js/items.js`, sell in `shop.py` **and** `js/shop.js` | If a shop lists an item the catalogue doesn't define, `create_item()` returns `None`, `None` lands in the inventory and the inventory/shop screen throws. A guard turns this into a harmless *"That item is not available."*, but the right fix is to add it to all four files |
-| Quests live in `quests.py` **and** `js/quests.js`; drops in `DROPS` in `enemy.py` **and** `js/enemy.js` | Same duplication — both files must agree or the two builds diverge |
-| The world map lives in `world_map.py` **and** `js/world_map.js` | Both builds read location coordinates and connections from them |
-| Bump `CACHE_VERSION` in `sw.js` when `js/*.js` changes | Those files are cached cache-first; without a bump, returning players keep the old code |
-| `templates/index.html` and the root `index.html` both contain the map renderer | The renderer is self-contained (its CSS sits in an SVG `<style>` block) so the block can be copied between them verbatim — keep them in step |
+| Logic lives in **both** `*.py` and `js/*.js`; data lives once, in Python | Behaviour is hand-written twice, and `parity_check.py` proves the copies agree. Catalogue, shop, monster, map, race and class data is generated into `js/game_data.js` by `py tools/gen_js_data.py` |
+| New items: define in `items.py`, sell in `shop.py`, then run `py tools/gen_js_data.py` | One pass picks up the item and its shop entry; a shop listing something the catalogue lacks still degrades to *"That item is not available."* |
+| Quests live in `quests.py` **and** `js/quests.js` (quests are not generated); drops live in `DROPS` in `enemy.py` and reach JS through the generator | Edit quests twice; drops once, then regen |
+| The map's locations live in `world_map.py`, then `py tools/gen_js_data.py` | Both builds read coordinates and connections from the generated data |
+| Never hand-edit `js/game_data.js` | It is generated; edit the Python input instead, or the change is overwritten at the next regen |
+| Run the three suites after any change | `py tools/parity_check.py`, `node tools/js_suite.js`, `py tools/flask_suite.py` - all green or do not ship |
+| Agent instructions come from `AGENTS.md` | It is generated - edit `tools/gen_agents_md.py` (invariants/descriptions) or add `> **Lesson:**` blockquotes to `PROGRESS.md`, then `py tools/gen_agents_md.py`; `py tools/check_docs.py` fails when it is stale |
+| Bump `CACHE_VERSION` in `sw.js` when `js/*.js`, the root `index.html`, or `tools/shells/` changes | All of it ends up inside the precached `index.html`, cache-first; without a bump, returning players keep the old code |
+| The UI is one design and one page script, assembled twice | `index.html` and `templates/index.html` are **generated** from `tools/shells/` by `py tools/gen_html_shells.py`; edit the sources, never the shells - `py tools/check_docs.py` fails when a shell is stale |
+
+**The daily loop:**
+
+```bash
+# 1. edit the Python side (data and/or logic)
+py tools/gen_js_data.py        # only when catalogue/shop/monster/map/race/class *data* changed
+py tools/gen_html_shells.py    # only when tools/shells/ changed (rewrites both HTML shells)
+py tools/parity_check.py       # freshness + cross-build logic parity
+node tools/js_suite.js         # PWA behaviour
+py tools/flask_suite.py        # Flask behaviour
+py tools/check_docs.py         # AGENTS.md + HTML shell freshness
+py tools/gen_game_guide.py     # only when the catalogue changed (then: py tools/audit_guide.py)
+```
+
+The suites freeze the RNG, so every number they assert is hand-computable and a
+rerun either reproduces a failure exactly or stays green - there are no flakes.
 
 `PROGRESS.md` is the running changelog: what changed, why, the bug chains, and post-mortems.
 

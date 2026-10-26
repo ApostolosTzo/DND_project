@@ -875,7 +875,12 @@ def sell_item():
         gs["log"] = ["Nobody wants to buy that."]
         return show_shop(gs.get("shop_name") or next(iter(SHOP_NPCS)))
 
-    index = next((i for i, item in enumerate(p.inventory) if item.name == item_name), None)
+    # Storage first: the PWA sells out of its bag, which never holds equipped
+    # gear, so the equipped copy must only go when nothing spare is left.
+    index = next((i for i, item in enumerate(p.inventory)
+                  if item.name == item_name
+                  and item is not p.weapon and item is not p.armor
+                  and item is not p.offhand), None)
     if index is not None:
         item = p.inventory.pop(index)
     elif p.weapon and p.weapon.name == item_name:
@@ -917,6 +922,67 @@ def shop_class_flags(p, shop, available):
     return flags
 
 
+def sell_listings(p):
+    """Sell-tab rows for the shop response, mirroring the PWA's renderShopSell.
+
+    player_json carries no inventory, so show_shop ships the rows as parallel
+    arrays. The layout matches the PWA exactly: equipped slots first (only when
+    the bag holds no copy of that name), then the bag grouped by name. Python
+    keeps equipped copies in the inventory - equipping never splices - so the
+    bag is filtered by identity before grouping, which is what the js inventory
+    does by construction.
+
+    ``last`` marks a row whose sale would leave the character without anything
+    for that slot; the shared UI asks for a confirmation before going through.
+    """
+    storage = [i for i in p.inventory
+               if i is not p.weapon and i is not p.armor and i is not p.offhand]
+    grouped = {}
+    for item in storage:
+        grouped.setdefault(item.name, []).append(item)
+
+    def kind_of(item):
+        if item.category == "weapon":
+            return "weapon"
+        if item.category == "item":
+            return "item"
+        return "offhand" if item.armor_type == "shield" else "armor"
+
+    def slot_for(kind):
+        return {"weapon": "weapon", "offhand": "offhand"}.get(kind, "armor")
+
+    def owned(name, slot):
+        # The js count: bag copies (equipped ones already filtered out) plus
+        # whatever currently sits in `slot`.
+        n = sum(1 for i in storage if i.name == name)
+        cur = getattr(p, slot)
+        return n + (1 if cur is not None and cur.name == name else 0)
+
+    rows = {"sell_items": [], "sell_labels": [], "sell_prices": [],
+            "sell_kinds": [], "sell_equipped": [], "sell_last": []}
+
+    def push(name, label, kind, slot, is_equipped):
+        # None lands as JSON null: the row renders disabled, "cannot be sold".
+        rows["sell_items"].append(name)
+        rows["sell_labels"].append(label)
+        rows["sell_prices"].append(sell_price(name))
+        rows["sell_kinds"].append(kind)
+        rows["sell_equipped"].append(is_equipped)
+        rows["sell_last"].append(kind != "item" and owned(name, slot) <= 1)
+
+    for slot in ("weapon", "armor", "offhand"):
+        item = getattr(p, slot)
+        if item is not None and item.name not in grouped:
+            push(item.name, item.name, kind_of(item), slot, True)
+
+    for name, group in grouped.items():
+        label = name if len(group) == 1 else f"{name} x{len(group)}"
+        kind = kind_of(group[0])
+        push(name, label, kind, slot_for(kind), False)
+
+    return rows
+
+
 def show_shop(shop_name):
     p = gs["player"]
     shop = SHOP_NPCS[shop_name]
@@ -930,7 +996,9 @@ def show_shop(shop_name):
                           "shop_potions": [is_potion(n) for n in available.keys()],
                           # False = greyed out, this class cannot wield it.
                           "shop_usable": shop_class_flags(p, shop, available),
-                          "shop_npc_class": NPC_CLASS.get(shop_name)})
+                          "shop_npc_class": NPC_CLASS.get(shop_name),
+                          # The Sell tab's rows - player_json has no inventory.
+                          **sell_listings(p)})
 
 # ---- Inventory ----
 def inventory_state():
@@ -1137,6 +1205,7 @@ def _item_details():
             entry["damage"] = item.damage_dice
             entry["type"] = damage_type(item.damage_type)
             entry["two_handed"] = two_handed_bonus(item)
+            entry["is_two_handed"] = is_two_handed(item)
             entry["element"] = element_of(item)
             entry["properties"] = item.properties
             # Which class may wield it, so the UI can say "not your class's
@@ -1146,11 +1215,17 @@ def _item_details():
             entry["any_class"] = len(classes) == len(ALL_CLASSES)
         elif item.category == "armor":
             entry["ac"] = item.base_ac
+            # The AC preview reads base_ac off every gear slot it rebuilds,
+            # the same field name js/items.js uses.
+            entry["base_ac"] = item.base_ac
             entry["kind"] = item.armor_type
         else:
             entry["description"] = item.description
             entry["heal"] = heal_amount(name)
             entry["usable"] = is_potion(name)
+        # Stat bonuses shift DEX in the AC preview, so every slot that can be
+        # worn carries the raw dict (PWA adapter sends the same one).
+        entry["stats_bonus"] = item.stats_bonus or {}
         if item.stats_bonus:
             entry["bonus"] = [f"{k} +{v}" for k, v in item.stats_bonus.items()]
         out[name] = entry
@@ -1300,7 +1375,15 @@ def dungeon_merchant():
     available = {n: d for n, d in shop["items"].items() if gs["player"].level >= d["min_level"]}
     items_list = [f"{n} ({d['price']}g)" for n, d in available.items()]
     gs["screen"] = "shop"
-    return respond("shop", "Dungeon Merchant", "", items_list + ["(Back)"], extra={"shop_items": list(available.keys()), "shop_prices": [d["price"] for d in available.values()], "dungeon_shop": True})
+    return respond("shop", "Dungeon Merchant", "", items_list + ["(Back)"],
+                   extra={"shop_items": list(available.keys()),
+                          "shop_prices": [d["price"] for d in available.values()],
+                          # Same shape as every other shop: potions get the
+                          # quantity stepper and nothing is ever class-gated.
+                          "shop_potions": [is_potion(n) for n in available.keys()],
+                          "shop_usable": [True for _ in available],
+                          "dungeon_shop": True,
+                          **sell_listings(gs["player"])})
 
 if __name__ == "__main__":
     app.run(debug=True)

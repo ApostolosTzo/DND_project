@@ -81,12 +81,13 @@ ITEMS = {
     # Special armor
     "Wizard Robe": Armor("Wizard Robe", 10, "light", properties=["magic"], stats_bonus={"INT": 9}),
     
-    # Items (potions & consumables)
-    "Healing Potion": Item("Healing Potion", "Restores 9 HP", "heal"),
-    "Greater Healing Potion": Item("Greater Healing Potion", "Restores 20 HP", "heal"),
-    "Superior Healing Potion": Item("Superior Healing Potion", "Restores 100 HP. Unlocks at level 15.", "heal"),
-    "Grand Healing Potion": Item("Grand Healing Potion", "Restores 300 HP. Unlocks at level 35.", "heal"),
-    "Ultimate Healing Potion": Item("Ultimate Healing Potion", "Restores 800 HP. Unlocks at level 70.", "heal"),
+    # Items (potions & consumables) - the heals below come straight from
+    # POTION_HEAL at the bottom of this file, which is what the game uses.
+    "Healing Potion": Item("Healing Potion", "Restores 10 HP.", "heal"),
+    "Greater Healing Potion": Item("Greater Healing Potion", "Restores 55 HP.", "heal"),
+    "Superior Healing Potion": Item("Superior Healing Potion", "Restores 120 HP.", "heal"),
+    "Grand Healing Potion": Item("Grand Healing Potion", "Restores 220 HP.", "heal"),
+    "Ultimate Healing Potion": Item("Ultimate Healing Potion", "Restores 360 HP.", "heal"),
     #"Mana Potion": Item("Mana Potion", "Restores mana (future use)", "mana"),
     #"Antidote": Item("Antidote", "Cures poison (future use)", "antidote"),
     
@@ -233,6 +234,13 @@ POTION_HEAL = {
     "Grand Healing Potion": 220,
     "Ultimate Healing Potion": 360,
 }
+
+# The shop and inventory panels show item.description, so a hand-typed "Restores
+# 9 HP" line goes stale the moment a heal is rebalanced - which it did. The
+# descriptions are rewritten from POTION_HEAL instead, so they cannot disagree
+# with what the potion actually does.
+for _potion, _heal in POTION_HEAL.items():
+    ITEMS[_potion].description = "Restores %d HP." % _heal
 
 # The level each tier starts appearing in shops.
 #

@@ -198,7 +198,13 @@ class Enemy:
         than silently doing nothing.
         """
         mult = self.damage_multiplier(type_name)
-        total = max(1, round(amount * mult))
+        # Half away from zero, which is what JavaScript's Math.round does.
+        # Python's built-in round() is half-to-even, so on an exactly .5
+        # result the two builds dealt different damage for the same hit - a
+        # resisted 5 hit for 2 here and 3 in the browser. shop._round_half_up
+        # documents the same trap for prices. Damage is never negative, so
+        # int(v + 0.5) is exactly round-half-up.
+        total = max(1, int(amount * mult + 0.5))
         self.take_damage(total)
         note = ""
         if mult == WEAK_MULTIPLIER:

@@ -2003,6 +2003,191 @@ contents anchor and internal link resolves.
 ---
 
 
+## Single-Sourced Data & Permanent Test Suites (Pass 1)
+
+The catalogue used to live twice - `items.py`, `shop.py`, `enemy.py`, `player.py`
+and `world_map.py` on one side, `js/items.js`, `js/shop.js`, `js/enemy.js`,
+`js/player.js` and `js/world_map.js` on the other - with a parity script
+catching drift after the fact. Pass 1 inverted the arrangement: **Python is the
+single source of truth for every number, and the JavaScript side is generated.**
+
+- `py tools/gen_js_data.py` reads the Python modules and rewrites
+  `js/game_data.js` (`const GAME_DATA = {...}`: 114 items, 7 shops with 142
+  stock entries, 4 races, 4 classes, 9 monsters, 4 locations, 26 element
+  constants - 45,765 bytes). The output is byte-deterministic and ASCII-escaped,
+  so an unchanged catalogue reproduces the identical file and a dirty diff means
+  a real change.
+- `js/items.js`, `js/shop.js`, `js/enemy.js`, `js/player.js` and
+  `js/world_map.js` keep their hand-written logic and read their data from
+  `GAME_DATA`. Only the data was single-sourced; behaviour is still written -
+  and tested - on both sides.
+- Root `index.html` loads the file between `dice.js` and `items.js`, `sw.js`
+  precaches it, and `CACHE_VERSION` went to v10 for the new file, then v11 for
+  the fix below.
+
+**Three suites are permanent repo tooling** (`tools/`), all green and
+deterministic across repeated runs:
+
+| Suite | Command | What it proves |
+|---|---|---|
+| Parity | `py tools/parity_check.py` | `js/game_data.js` is fresh **and** both builds compute the same answer for the same input: 11 logic groups (two_handed 76, damage_type 18, heal 117, is_potion 117, sell 116, element_of 52, usable_by 460, enemy 72, apply 836, players 960, element_rider 30) |
+| PWA behaviour | `node tools/js_suite.js` | 59 checks drive the real `game.js` headlessly through `tools/harness.js`, a vm loader with a settable RNG |
+| Flask behaviour | `py tools/flask_suite.py` | 79 checks drive the real routes through the Flask test client - the same flows, plus `/item_details`, `/map_data` and `/travel`; saves go to a throwaway temp dir |
+
+Determinism comes from freezing the RNG with one formula on both sides
+(`floor(r * (max - min + 1)) + min`): `Math.random` in the JS suites,
+`random.random`/`random.randint` in Python. 0.999999 rolls every die at its
+maximum, so every asserted number - all-19 creation stats, the 21-damage weak
+hit, the 8-gold Zombie drop - is hand-computable, and a rerun either reproduces
+a failure exactly or stays green.
+
+**What the pass surfaced:**
+
+- **Half-even vs half-up was a live divergence.** Python's `enemy.apply_damage`
+  rounded banker's, JS rounded half-up, so a 19.5 weak hit landed as 19 in one
+  build and 20 in the other. Python now rounds half-up
+  (`max(1, int(amount * mult + 0.5))`); the house rule sits next to
+  `shop._round_half_up`.
+- **Equipment `stats_bonus` feeds the combat maths**: the Longsword carries
+  STR+1 (effective STR 20, +5 to hit), the Ember Blade INT+1, Chainmail's
+  `dex_limit` of 2 caps the AC bonus at 16. Any hand-computed expectation that
+  forgets these is off by one - all three suites account for them.
+- **The class `bonuses` key is inert** - declared in both builds, applied by
+  neither. Wiring it up is a balance change; parked in To Do.
+- **Neither build gates `shopBuy` on `min_level`**: the UI greys the row out,
+  the route happily sells. Identical on both sides, so parity holds - noted,
+  not changed.
+- **Browser smoke test found `AC 16 -> undefined (NaN)`** in the PWA's shop
+  detail panel. `acPreview()` in the root `index.html` read `.base_ac` off the
+  equipped slots of a `playerJson()` state, where weapon/armor/offhand are name
+  *strings*; it now resolves string slots through `getItem()` and the panel
+  reads `AC stays 16`. `templates/index.html` has no such preview, so the fix
+  is single-sided; `CACHE_VERSION` bumped to `dnd-pwa-v11`.
+
+The loop after this pass: edit Python, `py tools/gen_js_data.py` when
+catalogue/shop/monster/map/race/class data changed, then all three suites;
+`py tools/gen_game_guide.py` (plus `py tools/audit_guide.py`) only when the
+catalogue itself changed.
+
+> **Lesson:** a generated file is an interface, not a copy - edit its input,
+> never its output, and keep a freshness check that fails loudly when someone
+> forgets to regen.
+
+> **Lesson:** rounding is a silent parity trap. Python's `round()` is
+> half-even, JS's `Math.round()` is half-up. Any formula shared between the
+> builds needs its rounding rule written down and pinned in a suite on both
+> sides.
+
+## Generated AGENTS.md & Docs Freshness Check (Pass 2)
+
+Pass 2 made the agent-facing rules a generated file, the same way Pass 1 made
+game data one:
+
+- `py tools/gen_agents_md.py` writes `AGENTS.md` (7,694 bytes, 42 files
+  mapped, 2 lessons mined) from three inputs: a hand-written `INVARIANTS`
+  block inside the generator (the two-build table, single-sourced data, the
+  three suites, the `CACHE_VERSION` rule, the rounding rule, UTF-8 doc
+  conventions, how to run both builds), a scan of the file tree with a `DESC`
+  one-line role per file, and every `> **Lesson:**` blockquote mined from this
+  changelog with its `## ` section as provenance.
+- The file map is policed both ways: a file with no `DESC` entry, or a `DESC`
+  entry whose file is gone, fails generation. The generator also tripped over
+  its own output on the second run - `AGENTS.md` is a root `*.md`, so the scan
+  discovers it and the map needs a row for it. A scanner must describe its own
+  output file or the very next run dies.
+- `py tools/check_docs.py` regenerates in memory and diffs against disk:
+  exit 0 with "up to date", exit 1 plus a unified diff when stale. Same
+  philosophy as `parity_check.py` polices `js/game_data.js` - generated files
+  are interfaces, and forgetting to regen has to be loud, not silent.
+- Output is byte-deterministic (sorted scan, LF newlines, UTF-8): two
+  consecutive runs hash to the same SHA256, verified in-session.
+
+Daily order when rules or lessons change: edit `INVARIANTS`/`DESC` or add a
+`> **Lesson:**` blockquote here, then `py tools/gen_agents_md.py`, then
+`py tools/check_docs.py`.
+
+## Codex UI Recreation (Pass 3)
+
+Pass 3 replaced both hand-written HTML shells with one design and one page
+script, and brought the Flask build to full UI parity with the PWA. The game
+now looks and behaves the same wherever it runs.
+
+### One design, one page script, assembled twice
+
+- `tools/shells/` holds the four sources: `codex.css` (the illuminated-codex
+  design - parchment `#EFE5CC`, shade, bone, ink, rubric, gold, verdigris,
+  Georgia serif, `\u261E` manicule list markers, mobile-first with a >= 760px
+  two-column layout and `prefers-reduced-motion` respected), `shared_page.js`
+  (63,226 chars - every render, detail panel, dice tray, map and keyboard
+  handler, shared verbatim by both builds), and the two adapters implementing
+  the same 19-member `Backend` seam (`init`, `getState`, `action`, ...,
+  `sellRows`, `equipRefusal`, `consumeDamage`). A missing member throws on
+  first paint.
+- `py tools/gen_html_shells.py` assembles them inline into `index.html`
+  (93,892 B) and `templates/index.html` (91,824 B). Inline, not linked, so the
+  precached `index.html` stays self-contained and the PWA keeps working
+  offline. The assembler refuses `</script`/`</style` inside the sources and
+  ships a `--check` mode.
+- `py tools/check_docs.py` now runs that `--check` alongside the AGENTS.md
+  diff, so a stale shell fails loudly the same way a stale AGENTS.md does.
+- `CACHE_VERSION` went `dnd-pwa-v11` -> `dnd-pwa-v12` (the whole page is
+  precached), and AGENTS.md gained the shell invariant plus a `tools/shells/`
+  file map.
+
+### Flask gained full UI parity
+
+- The fixed creation form, viewport/mobile layout, arrow-key + digit
+  navigation, the shop Buy/Sell tabs and the shop AC preview all reached
+  Flask over HTTP.
+- Selling: `sell_listings(p)` in `game_server.py` emits parallel
+  `sell_items/labels/prices/kinds/equipped/last` arrays into `show_shop` and
+  `dungeon_merchant` (player_json carries no inventory). `/sell` prefers a
+  non-equipped copy - a storage-first identity filter - so the grouped row
+  sells a spare when one exists, while the `(equipped)` row sells the equipped
+  copy; browser-verified end to end (Mace sold, weapon -> None, +24g).
+- `_item_details` now carries `is_two_handed`, `base_ac` and `stats_bonus`, so
+  the panels can preview "AC 12 -> 16" and warn "X is two-handed - it needs
+  both hands" from server data; `inventory_state` returns an `inv_blocked`
+  dict and the adapter disables the Equip button with that reason (verified
+  with Bruno's two-handed Longsword vs a Shield).
+- The combat stage, SVG monster portraits, dice tray and floating damage
+  numbers reached Flask too, with a seq+key guard on `last_damage` so
+  re-rendering the same attack never respawns the float (verified: one float,
+  then two re-renders with no respawn).
+
+### Verification
+
+- Suites green after every edit: `parity_check.py` 11 groups, `js_suite.js`
+  59 checks, `flask_suite.py` 79 checks, `check_docs.py` exit 0.
+- Full in-browser playthroughs of BOTH builds (PWA at 127.0.0.1:8734, Flask at
+  127.0.0.1:5000): creation, 7-NPC shop select, Buy/Sell with class locks,
+  potion stepper (Max capped by gold), last-of-kind confirm, inventory equip
+  + AC preview + refusals, combat (hits, resistances, two-handed bonus, item
+  use), victory rewards, save/load, world-map travel including the
+  unreachable-location guard, keyboard navigation and the back-button chain.
+  Zero console errors and zero warnings on both tabs.
+
+### Files changed
+
+- `tools/shells/codex.css`, `tools/shells/shared_page.js`,
+  `tools/shells/pwa_adapter.js`, `tools/shells/flask_adapter.js` (new - the
+  UI sources)
+- `tools/gen_html_shells.py` (new - assembler with `--check`)
+- `index.html`, `templates/index.html` (regenerated - never hand-edit)
+- `game_server.py` (`sell_listings`, shop extras, `_item_details` keys,
+  `/sell` filter, `inv_blocked`)
+- `tools/gen_agents_md.py` (shell invariant + `tools/shells/` file map),
+  `tools/check_docs.py` (shell freshness), `sw.js` (v11 -> v12)
+
+> **Lesson:** Two builds can duplicate the *engine* and let a parity suite
+> police it, because a truth table can check a formula. The view has no truth
+> table - duplication there just drifts, one pixel at a time, until nobody can
+> say which copy is right. The fix is the same shape either way: one source, a
+> generator, and a freshness check that fails loudly. The only extra
+> constraint is that the generated artifact may have to stand alone - the
+> offline PWA precaches `index.html`, so the shared sources go in inline
+> rather than linked.
+
 ## To Do
 - **The class `bonuses` key is declared but never applied** — `CLASSES` carries
   `bonuses: {STR: 2}` / `DEX+2` / `INT+2` / `WIS+2`, but neither `make_character()` in

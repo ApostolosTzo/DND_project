@@ -1,46 +1,29 @@
 // enemy.py - Enemy templates, bosses and level scaling.
+//
+// The tables and the element constants are GENERATED into js/game_data.js from
+// enemy.py by tools/gen_js_data.py; the combat behaviour below stays
+// hand-written.
 
-const TEMPLATES = {
-    "Zombie": { hp: 22, ac: 8, dice: "d6", bonus: 1, xp: 50, gold: 5 },
-    "Skeleton": { hp: 13, ac: 13, dice: "d6", bonus: 2, xp: 50, gold: 6 },
-    "Spider": { hp: 16, ac: 12, dice: "d4", bonus: 1, xp: 50, gold: 4 },
-    "Wolf": { hp: 18, ac: 13, dice: "d6", bonus: 2, xp: 50, gold: 6 },
-    "Goblin": { hp: 10, ac: 15, dice: "d4", bonus: 1, xp: 30, gold: 8 },
-    "Slime": { hp: 20, ac: 7, dice: "d6", bonus: 0, xp: 40, gold: 3 },
-    "Ghost": { hp: 18, ac: 11, dice: "d8", bonus: 2, xp: 80, gold: 10 },
-    "Demon Lord": { hp: 60, ac: 15, dice: "d10", bonus: 5, xp: 200, gold: 50 },
-    "Elder Dragon": { hp: 75, ac: 18, dice: "d12", bonus: 6, xp: 250, gold: 80 }
-};
+const TEMPLATES = GAME_DATA.templates;
 
-const BOSS_NAMES = ["Demon Lord", "Elder Dragon"];
+const BOSS_NAMES = GAME_DATA.boss_names;
 
 // Damage types each monster is weak or hard against. This is what makes weapon
 // damage types matter: the same longsword that barely scratches a Zombie cuts
 // a Skeleton open, because skeletons are all bone.
-const VULNERABILITIES = {
-    "Zombie": { weak: ["slashing", "piercing"], resist: ["bludgeoning", "force"] },
-    "Skeleton": { weak: ["bludgeoning", "piercing"], resist: ["slashing", "fire"] },
-    "Spider": { weak: ["fire", "ice"], resist: ["piercing"] },
-    "Wolf": { weak: ["piercing"], resist: ["bludgeoning"] },
-    "Goblin": { weak: ["slashing"], resist: ["ice"] },
-    "Slime": { weak: ["fire", "ice"], resist: ["bludgeoning", "piercing", "slashing"] },
-    "Ghost": { weak: ["force", "ice"], resist: ["piercing", "slashing"] },
-    "Demon Lord": { weak: ["ice", "piercing"], resist: ["fire", "dark", "force"] },
-    "Elder Dragon": { weak: ["piercing", "poison"], resist: ["fire", "slashing"] }
-};
+const VULNERABILITIES = GAME_DATA.vulnerabilities;
 
 // How much damage a hit does when the monster is weak / resistant to its type.
-const WEAK_MULTIPLIER = 1.5;
-const RESIST_MULTIPLIER = 0.5;
+const WEAK_MULTIPLIER = GAME_DATA.weak_multiplier;
+const RESIST_MULTIPLIER = GAME_DATA.resist_multiplier;
 
 // -----------------------------
-// Status effects
+// Element effects
 // -----------------------------
-// ---- Element effects ------------------------------------------------------------
 // Five damage types inflict a lasting effect, and every one of them is *rolled
 // for* except dark. That is deliberate: a weapon should be a good investment,
-// not a guaranteed effect, so the stat that matters to you decides how often the
-// rider actually lands.
+// not a guaranteed effect, so the stat that matters to you decides how often
+// the rider actually lands.
 //
 // Each effect names the stat it scales on, and no two of them share a stat - INT
 // drives fire and ice, DEX drives poison, WIS drives lightning and STR drives
@@ -55,66 +38,62 @@ const RESIST_MULTIPLIER = 0.5;
 // Ice is the stingiest on purpose: freezing removes the target's entire turn,
 // so a 43% cap keeps it strong rather than overpowered, and +1% per *5* INT
 // means only a dedicated caster closes the gap.
+//
+// The constants are aliased one-for-one from enemy.py, keeping their names, so
+// a search for BURN_BASE_CHANCE finds the same identifier in both builds.
+const _ER = GAME_DATA.element_rules;
 
 // --- Fire: catches, then burns for two rounds
-const BURN_ROUNDS = 2;
-const BURN_DIE = "1d4";
-const BURN_BASE_CHANCE = 0.20;
-const BURN_CHANCE_PER_INT = 0.03;
-const BURN_MAX_CHANCE = 0.60;
+const BURN_ROUNDS = _ER.BURN_ROUNDS;
+const BURN_DIE = _ER.BURN_DIE;
+const BURN_BASE_CHANCE = _ER.BURN_BASE_CHANCE;
+const BURN_CHANCE_PER_INT = _ER.BURN_CHANCE_PER_INT;
+const BURN_MAX_CHANCE = _ER.BURN_MAX_CHANCE;
 
 // --- Ice: no damage at all, but the target loses its whole turn
-const FREEZE_BASE_CHANCE = 0.10;
-const FREEZE_INT_PER_POINT = 5;       // one extra point of chance per this much INT
-const FREEZE_CHANCE_PER_INT_BLOCK = 0.01;
-const FREEZE_MAX_CHANCE = 0.43;
-const FREEZE_INT_THRESHOLD = 15;      // at or above this INT, a freeze lasts 2 rounds
-const FREEZE_MIN_ROUNDS = 1;
-const FREEZE_MAX_ROUNDS = 2;
+const FREEZE_BASE_CHANCE = _ER.FREEZE_BASE_CHANCE;
+const FREEZE_INT_PER_POINT = _ER.FREEZE_INT_PER_POINT;       // one extra point of chance per this much INT
+const FREEZE_CHANCE_PER_INT_BLOCK = _ER.FREEZE_CHANCE_PER_INT_BLOCK;
+const FREEZE_MAX_CHANCE = _ER.FREEZE_MAX_CHANCE;
+const FREEZE_INT_THRESHOLD = _ER.FREEZE_INT_THRESHOLD;       // at or above this INT, a freeze lasts 2 rounds
+const FREEZE_MIN_ROUNDS = _ER.FREEZE_MIN_ROUNDS;
+const FREEZE_MAX_ROUNDS = _ER.FREEZE_MAX_ROUNDS;
 
 // --- Poison: the mirror of fire, but on DEX, and it never wears off
-const POISON_BASE_CHANCE = 0.20;
-const POISON_CHANCE_PER_DEX = 0.03;
-const POISON_MAX_CHANCE = 0.60;
+const POISON_BASE_CHANCE = _ER.POISON_BASE_CHANCE;
+const POISON_CHANCE_PER_DEX = _ER.POISON_CHANCE_PER_DEX;
+const POISON_MAX_CHANCE = _ER.POISON_MAX_CHANCE;
 // Poison is never "wearing off" - it runs until the creature is dead.
-const POISON_MAX_ROUNDS = 999;
+const POISON_MAX_ROUNDS = _ER.POISON_MAX_ROUNDS;
 
 // --- Lightning: the WIS effect, and the hardest-hitting of the short riders
-const LIGHTNING_ROUNDS = 2;
-const LIGHTNING_DIE = "1d8";
-const LIGHTNING_BASE_CHANCE = 0.15;
-const LIGHTNING_WIS_PER_POINT = 2;    // one extra point of chance per this much WIS
-const LIGHTNING_CHANCE_PER_WIS_BLOCK = 0.01;
-const LIGHTNING_MAX_CHANCE = 0.50;
+const LIGHTNING_ROUNDS = _ER.LIGHTNING_ROUNDS;
+const LIGHTNING_DIE = _ER.LIGHTNING_DIE;
+const LIGHTNING_BASE_CHANCE = _ER.LIGHTNING_BASE_CHANCE;
+const LIGHTNING_WIS_PER_POINT = _ER.LIGHTNING_WIS_PER_POINT;    // one extra point of chance per this much WIS
+const LIGHTNING_CHANCE_PER_WIS_BLOCK = _ER.LIGHTNING_CHANCE_PER_WIS_BLOCK;
+const LIGHTNING_MAX_CHANCE = _ER.LIGHTNING_MAX_CHANCE;
 
 // --- Dark: the odd one out. No roll at all, and it scales on STR.
 // 1d4 + 1 for every 15 points of STR, so it starts at a flat 1d4 on a 10 STR
 // character and only reaches 1d4+2 at STR 30.
-const DARK_ROUNDS = 3;
-const DARK_DIE = "1d4";
-const DARK_STR_PER_POINT = 15;        // one extra point of damage per this much STR
-const DARK_DAMAGE_PER_STR_BLOCK = 1;
+const DARK_ROUNDS = _ER.DARK_ROUNDS;
+const DARK_DIE = _ER.DARK_DIE;
+const DARK_STR_PER_POINT = _ER.DARK_STR_PER_POINT;        // one extra point of damage per this much STR
+const DARK_DAMAGE_PER_STR_BLOCK = _ER.DARK_DAMAGE_PER_STR_BLOCK;
 
 // Rewards are multiplied by these before being rounded to whole numbers.
-const XP_REWARD_MULTIPLIER = 1.4;   // +40% XP
-const GOLD_REWARD_MULTIPLIER = 1.6; // +60% gold
+const XP_REWARD_MULTIPLIER = GAME_DATA.xp_reward_multiplier;   // +40% XP
+const GOLD_REWARD_MULTIPLIER = GAME_DATA.gold_reward_multiplier; // +60% gold
 
 // Monster -> the quest material it drops.
 // Demon Lord and Elder Dragon deliberately drop nothing yet.
-const DROPS = {
-    "Goblin": "Metal Fragments",
-    "Spider": "Web String",
-    "Slime": "Slime Ball",
-    "Zombie": "Rotten Flesh",
-    "Skeleton": "Bone",
-    "Wolf": "Fur",
-    "Ghost": "Plasma"
-};
+const DROPS = GAME_DATA.drops;
 
 // Chance a kill drops anything, and how many pieces it is worth.
-const DROP_CHANCE = 0.75;
-const DROP_MIN = 1;
-const DROP_MAX = 3;
+const DROP_CHANCE = GAME_DATA.drop_chance;
+const DROP_MIN = GAME_DATA.drop_min;
+const DROP_MAX = GAME_DATA.drop_max;
 
 function Enemy(name, level) {
     this.name = name;

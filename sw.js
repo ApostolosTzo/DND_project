@@ -3,7 +3,7 @@
    Caches the whole (fully client-side) game so it runs offline.
    ============================================================ */
 
-const CACHE_VERSION = "dnd-pwa-v9";
+const CACHE_VERSION = "dnd-pwa-v12";
 const CACHE_NAME = CACHE_VERSION;
 
 const CORE_ASSETS = [
@@ -15,6 +15,7 @@ const CORE_ASSETS = [
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
   "./js/dice.js",
+  "./js/game_data.js",
   "./js/items.js",
   "./js/enemy.js",
   "./js/player.js",
