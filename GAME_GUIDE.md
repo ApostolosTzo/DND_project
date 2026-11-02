@@ -228,34 +228,36 @@ The XP requirement is `level x 100` but rewards grow with level, so each level t
 
 ### The dice tray
 
-Your turn opens a tray showing the dice for **each** attack you can make, each with
-a **Roll** button. Pressing it spins the dice, lands them on the real result, then
-resolves the attack. You always know the die, the weapon and the modifier first.
+Your turn opens a tray with **one** row and one **Roll** button per round. With a
+weapon in each hand the row is tinted and tagged `MAIN + OFF` — it is still ONE roll.
+Pressing Roll spins the dice, lands them on the real result, then resolves the
+round. You always know the die, the weapon and the modifier first.
 
 | Dice shown | Means |
 |---|---|
 | `to hit 1d20 +N` | the attack roll, against the monster's AC |
 | `damage NdX +N` | damage on a hit, before weaknesses |
-| `half damage NdX +N` | the off-hand row, already halved |
+| `+ off-hand half dK +Q` | the off-hand's share of the same roll, already halved |
 
 A **miss** lands on `MISS` in grey and shows no damage number.
 
 ### Floating damage numbers
 
 Damage rises over the monster's health bar as a number. A hit against a weakness
-flashes **gold**. A miss shows **nothing** — not a zero.
+flashes **gold**. When both hands struck, the off-hand's number floats in **ink**
+beside the main hand's. A miss shows **nothing** — not a zero.
 
 ### Your turn
 
 | Action | Cost |
 |---|---|
-| Roll (main hand) | the whole turn — the monster retaliates |
-| Roll (off-hand) | the whole turn — half damage, monster retaliates |
+| Roll | the whole turn — one d20, both hands, the monster retaliates once |
 | Use Item | the whole turn; an **unusable** item still costs it |
 | Flee | only outside the dungeon |
 
-Because every action is a full turn, **the off-hand is a genuine choice**: about +50%
-damage per round if your AC holds, and a much worse round if it does not.
+Because every action is a full turn, **the off-hand is free damage**: one d20
+gates both hands, so a weapon in each hand is about +50% damage per round for
+the same monster swing.
 
 ### Using items
 
@@ -282,9 +284,10 @@ Rules that catch people out:
   but you are not wearing it either.
 - **A shield is not a weapon.** It raises AC and adds its stat bonus, but gives no
   second attack.
-- **A weapon in the off-hand attacks for half damage** — `floor((dice + modifier) / 2)`.
-  It costs a whole turn: you give up the main-hand swing and the monster still
-  retaliates. Roughly +50% damage per round if your AC holds up.
+- **A weapon in the off-hand strikes in the same round** — at half damage,
+  `floor((dice + modifier) / 2)`. One d20 gates both hands: a hit lands the
+  main-hand damage AND the off-hand's half, a miss lands nothing. The monster
+  retaliates once. Roughly +50% damage per round if your AC holds up.
 - **The Fighter starts with a two-handed Longsword** — so a new Fighter cannot equip a
   shield at all until they buy a one-handed weapon from another class's stall. See
   [If you are a Fighter and want a shield](#if-you-are-a-fighter-and-want-a-shield).

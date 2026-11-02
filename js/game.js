@@ -484,19 +484,18 @@ function weaponMod(p, weapon) {
     return p.modifier("STR");
 }
 
-// One player attack, from the dice tray. `isOffhand` picks the off-hand
-// swing; either way it costs the whole turn and the monster retaliates.
-function playerAttack(isOffhand) {
+// One player attack, from the dice tray: one round. A single d20 gates both
+// hands, and the monster retaliates once.
+function playerAttack() {
     const p = gs.player;
     const e = gs.enemy;
     // A Roll button can be pressed with nothing to fight - no enemy yet, or the
     // fight already ended. Bailing out to the menu rather than reaching into a
     // null enemy.
     if (!p || !e || !e.is_alive()) return getState();
-    if (isOffhand && !hasOffhandWeapon(p)) return combatState();
 
     // The combat log accumulates: every exchange stays visible in the chat.
-    gs.log.push(isOffhand ? webOffhandAttack(p, e) : webPlayerAttack(p, e));
+    webPlayerAttack(p, e).forEach((line) => gs.log.push(line));
 
     if (!e.is_alive()) return combatReward("Victory!");
 
@@ -653,75 +652,68 @@ function combatItemState() {
         options, { combat_items: items.map((i) => i.name) });
 }
 
+// Player Attack. One d20 gates both hands: a hit lands the main-hand damage
+// AND the off-hand's half damage in the same round, a miss lands nothing.
 function webPlayerAttack(p, e) {
-    let mod;
-    mod = weaponMod(p, p.weapon);
-
+    const mod = weaponMod(p, p.weapon);
     const prof = profBonus(p);
     const atk = roll("1d20") + prof + mod;
+    const off = hasOffhandWeapon(p);
 
-    if (atk >= e.ac) {
-        let dmg = 0;
-        const heavy = twoHandedBonus(p.weapon);
-        if (p.weapon) {
-            dmg = Math.max(roll(p.weapon.damage_dice) + mod + heavy, 1);
-        } else {
-            dmg = Math.max(1 + mod, 1);
-        }
-        // The weapon's damage type decides how hard this lands: skeletons
-        // crumble to bludgeoning, slimes shrug off steel.
-        const type = p.weapon ? damageType(p.weapon.damage_type) : null;
-        const result = e.apply_damage(dmg, type);
-        const element = elementOf(p.weapon);
-        const effect = e.inflict_element(element, p);
-        gs.last_damage = {
-            amount: result.total,
-            kind: "hit",
-            weak: result.note.indexOf("WEAK") !== -1
-        };
-
-        let line = "You hit the " + e.name + " for " + result.total + " damage!" +
-            result.note + " (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
-        if (heavy > 0) line += " +" + heavy + " two-handed";
-        if (effect) line += effect;
-        return line;
+    if (atk < e.ac) {
+        gs.last_damage = null;   // a miss shows no floating number
+        return ["You missed! (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")"];
     }
-    gs.last_damage = null;   // a miss shows no floating number
-    return "You missed! (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
-}
 
-// The off-hand swing: its own hit roll, half damage. It is a whole turn of its
-// own, so using it gives up the main-hand attack and lets the monster retaliate.
-function webOffhandAttack(p, e) {
-    const w = p.offhand;
-    const mod = weaponMod(p, w);
-    const prof = profBonus(p);
-    const atk = roll("1d20") + prof + mod;
+    let dmg = 0;
+    const heavy = twoHandedBonus(p.weapon);
+    if (p.weapon) {
+        dmg = Math.max(roll(p.weapon.damage_dice) + mod + heavy, 1);
+    } else {
+        dmg = Math.max(1 + mod, 1);
+    }
+    // The weapon's damage type decides how hard this lands: skeletons
+    // crumble to bludgeoning, slimes shrug off steel.
+    const type = p.weapon ? damageType(p.weapon.damage_type) : null;
+    const result = e.apply_damage(dmg, type);
+    const element = elementOf(p.weapon);
+    const effect = e.inflict_element(element, p);
+    let weak = result.note.indexOf("WEAK") !== -1;
 
-    if (atk >= e.ac) {
+    let line = "You hit the " + e.name + " for " + result.total + " damage!" +
+        result.note + " (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac + ")";
+    if (heavy > 0) line += " +" + heavy + " two-handed";
+    if (effect) line += effect;
+    const lines = [line];
+
+    // The off-hand rides the same roll - same to-hit, half damage - and only
+    // if the enemy is still standing after the main-hand hit (no overkill).
+    let offTotal = 0;
+    if (off && e.is_alive()) {
+        const w = p.offhand;
+        const omod = weaponMod(p, w);
         // Half of (dice + modifier), rounded down, never less than 1. The
         // two-handed bonus is deliberately absent - it cannot be held anyway.
-        const full = Math.max(roll(w.damage_dice) + mod, 1);
-        const dmg = Math.max(Math.floor(full / OFFHAND_DAMAGE_DIVISOR), 1);
-        const type = damageType(w.damage_type);
-        const result = e.apply_damage(dmg, type);
-        const effect = e.inflict_element(elementOf(w), p);
-        gs.last_damage = {
-            amount: result.total,
-            kind: "hit",
-            weak: result.note.indexOf("WEAK") !== -1
-        };
-
-        let line = "Off-hand " + w.name + " hits the " + e.name + " for " +
-            result.total + " damage!" + result.note +
-            " (d20 + " + prof + " + " + mod + " = " + atk + " vs AC " + e.ac +
-            ", half damage)";
-        if (effect) line += effect;
-        return line;
+        const full = Math.max(roll(w.damage_dice) + omod, 1);
+        const offDmg = Math.max(Math.floor(full / OFFHAND_DAMAGE_DIVISOR), 1);
+        const offResult = e.apply_damage(offDmg, damageType(w.damage_type));
+        const offEffect = e.inflict_element(elementOf(w), p);
+        offTotal = offResult.total;
+        weak = weak || offResult.note.indexOf("WEAK") !== -1;
+        // Deliberately no "= N vs AC" here: the dice land on the main line.
+        let offLine = "Off-hand " + w.name + " follows for " + offTotal + " damage!" +
+            offResult.note + " (same roll, half damage)";
+        if (offEffect) offLine += offEffect;
+        lines.push(offLine);
     }
-    gs.last_damage = null;   // a miss shows no floating number
-    return "Off-hand " + w.name + " missed! (d20 + " + prof + " + " + mod +
-        " = " + atk + " vs AC " + e.ac + ")";
+
+    gs.last_damage = {
+        amount: result.total,
+        kind: "hit",
+        weak: weak,
+        off: offTotal
+    };
+    return lines;
 }
 
 function webEnemyAttack(p, e) {

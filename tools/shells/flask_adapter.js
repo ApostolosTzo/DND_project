@@ -61,13 +61,13 @@ const Backend = {
     travel: (id) => post("/travel", { location: id }),
     createForm: () => get("/create_form"),
 
-    async playerAttack(offhand) {
+    async playerAttack() {
         attackSeq++;   // a fresh attack may float the same number again
         await backendReady();
         const r = await fetch("/attack", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ offhand: !!offhand })
+            body: "{}"
         });
         return r.json();
     },

@@ -450,7 +450,8 @@ function renderStage(s) {
     // A floating number over the health bar, only when the player actually
     // landed a hit. It fades on its own and is gone by the next exchange, so
     // the number on screen always belongs to the roll that just happened.
-    // The adapter hands over the float exactly once per landed hit.
+    // The adapter hands over the float exactly once per landed hit. When the
+    // off-hand rode the same roll, it floats its own number alongside.
     const hit = Backend.consumeDamage(s);
     if (hit && hit.amount > 0) {
         const layer = stage.querySelector("#dmg-layer");
@@ -459,6 +460,13 @@ function renderStage(s) {
         float.textContent = "-" + hit.amount;
         layer.appendChild(float);
         float.addEventListener("animationend", function () { float.remove(); });
+        if (hit.off > 0) {
+            const off = document.createElement("div");
+            off.className = "dmg-float off-float" + (hit.weak ? " weak" : "");
+            off.textContent = "-" + hit.off;
+            layer.appendChild(off);
+            off.addEventListener("animationend", function () { off.remove(); });
+        }
     }
     return true;
 }
@@ -1177,51 +1185,61 @@ function renderDiceTray(s) {
         : "roll to attack";
     tray.appendChild(sub);
 
-    attacks.forEach((atk, i) => {
-        const hitParts = diceParts(atk.hit_die);
-        const dmgParts = diceParts(atk.damage_die);
+    // One row per round: a weapon in each hand is ONE roll - the d20 gates
+    // both swings, so the main-hand and off-hand infos merge into one row.
+    const atk = attacks[0];
+    const offAtk = attacks.length > 1 && attacks[1].offhand ? attacks[1] : null;
+    const dual = !!offAtk;
 
-        const row = document.createElement("div");
-        row.className = "dice-row" + (atk.offhand ? " offhand" : "");
+    const dmgParts = diceParts(atk.damage_die);
 
-        const stage = document.createElement("div");
-        stage.className = "dice-stage";
-        stage.appendChild(d20El(null));
-        const d20 = stage.lastChild;
-        for (let k = 0; k < Math.min(dmgParts.count, 3); k++) stage.appendChild(dieEl(dmgParts.sides, 0));
-        row.appendChild(stage);
+    const row = document.createElement("div");
+    row.className = "dice-row" + (dual ? " dual" : "");
 
-        const total = document.createElement("span");
-        total.className = "dmg-total";
-        row.appendChild(total);
+    const stage = document.createElement("div");
+    stage.className = "dice-stage";
+    stage.appendChild(d20El(null));
+    for (let k = 0; k < Math.min(dmgParts.count, 3); k++) stage.appendChild(dieEl(dmgParts.sides, 0));
+    row.appendChild(stage);
 
-        const info = document.createElement("div");
-        info.className = "dice-info";
-        const label = document.createElement("div");
-        label.className = "dice-label";
-        if (atk.offhand) {
-            label.innerHTML = '<span class="off-tag">OFF-HAND</span>' + escapeHtml(atk.weapon);
-        } else {
-            label.textContent = atk.weapon;
-        }
-        const formula = document.createElement("div");
-        formula.className = "dice-formula";
-        formula.textContent = "to hit " + atk.hit_die + " " + signed(atk.hit_bonus) +
-            "  ·  " + (atk.offhand ? "half damage " : "damage ") +
-            (dmgParts.valid ? dmgParts.count + "d" + dmgParts.sides : "?") +
-            " " + signed(atk.damage_bonus);
-        info.appendChild(label);
-        info.appendChild(formula);
-        row.appendChild(info);
+    const total = document.createElement("span");
+    total.className = "dmg-total";
+    row.appendChild(total);
 
-        const roll = document.createElement("button");
-        roll.className = "roll-btn";
-        roll.textContent = "Roll";
-        roll.addEventListener("click", () => doRoll(i));
-        row.appendChild(roll);
+    const info = document.createElement("div");
+    info.className = "dice-info";
+    const label = document.createElement("div");
+    label.className = "dice-label";
+    if (dual) {
+        label.innerHTML = '<span class="off-tag">MAIN + OFF</span>' +
+            escapeHtml(atk.weapon + " + " + offAtk.weapon);
+    } else {
+        label.textContent = atk.weapon;
+    }
+    const formula = document.createElement("div");
+    formula.className = "dice-formula";
+    let text = "to hit " + atk.hit_die + " " + signed(atk.hit_bonus) +
+        "  ·  damage " +
+        (dmgParts.valid ? dmgParts.count + "d" + dmgParts.sides : "?") +
+        " " + signed(atk.damage_bonus);
+    if (dual) {
+        const offParts = diceParts(offAtk.damage_die);
+        text += "  +  off-hand half " +
+            (offParts.valid ? offParts.count + "d" + offParts.sides : "?") +
+            " " + signed(offAtk.damage_bonus);
+    }
+    formula.textContent = text;
+    info.appendChild(label);
+    info.appendChild(formula);
+    row.appendChild(info);
 
-        tray.appendChild(row);
-    });
+    const roll = document.createElement("button");
+    roll.className = "roll-btn";
+    roll.textContent = "Roll";
+    roll.addEventListener("click", () => doRoll());
+    row.appendChild(roll);
+
+    tray.appendChild(row);
 }
 
 function escapeHtml(text) {
@@ -1230,20 +1248,29 @@ function escapeHtml(text) {
     return d.innerHTML;
 }
 
-// Pulls the numbers back out of the log line the attack just produced, so the
+// Pulls the numbers back out of the log lines the attack just produced, so the
 // dice can land on what actually happened rather than on a random face.
 //   "... for 12 damage! ... (d20 + 2 + 3 = 17 vs AC 8)"
+//   "Off-hand Dagger follows for 6 damage! ... (same roll, half damage)"
 //   "... missed! (d20 + 2 + 3 = 11 vs AC 8)"
 function parseAttackResult(lines) {
-    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 4; i--) {
+    for (let i = lines.length - 1; i >= 0 && i >= lines.length - 6; i--) {
         const line = lines[i] || "";
         const atk = /= (\d+) vs AC/.exec(line);
         if (!atk) continue;
         const dmg = /for (\d+) damage/.exec(line);
+        // The off-hand rides the same roll; its line carries no "= N vs AC",
+        // so it is summed in separately and the dice still land on the main.
+        let off = 0;
+        for (let k = lines.length - 1; k >= 0 && k >= lines.length - 6; k--) {
+            const m = /^Off-hand .* for (\d+) damage/.exec(lines[k] || "");
+            if (m) off += parseInt(m[1], 10);
+        }
         return {
             hitTotal: parseInt(atk[1], 10),
             damage: dmg ? parseInt(dmg[1], 10) : null,
-            weak: /WEAK to/.test(line)
+            weak: /WEAK to/.test(line),
+            off: off
         };
     }
     return null;
@@ -1252,7 +1279,7 @@ function parseAttackResult(lines) {
 // Spins the dice, resolves the real attack, lands the dice on the true numbers,
 // then hands over to the normal render. The delay is short enough not to drag
 // and long enough that the result is readable before the log updates.
-async function doRoll(index) {
+async function doRoll() {
     if (trayBusy) return;
     trayBusy = true;
 
@@ -1260,7 +1287,7 @@ async function doRoll(index) {
     const buttons = tray.querySelectorAll(".roll-btn");
     for (let i = 0; i < buttons.length; i++) buttons[i].disabled = true;
 
-    const row = tray.querySelectorAll(".dice-row")[index];
+    const row = tray.querySelector(".dice-row");
     const d20 = row.querySelector(".die.d20");
     const dice = row.querySelectorAll(".die:not(.d20)");
     const totalEl = row.querySelector(".dmg-total");
@@ -1286,7 +1313,7 @@ async function doRoll(index) {
     clearInterval(flicker);
 
     const before = (currentState.log || []).length;
-    const next = await Backend.playerAttack(index === 1);
+    const next = await Backend.playerAttack();
     const added = (next.log || []).slice(before);
     const result = parseAttackResult(added);
 
@@ -1301,7 +1328,8 @@ async function doRoll(index) {
             d20.classList.add("miss");
         } else {
             d20.classList.remove("miss");
-            totalEl.textContent = "-" + result.damage;
+            totalEl.textContent = "-" + result.damage +
+                (result.off > 0 ? "  ·  off -" + result.off : "");
             totalEl.classList.add("show");
         }
     }

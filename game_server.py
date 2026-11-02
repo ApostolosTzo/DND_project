@@ -413,9 +413,9 @@ def combat_item_state():
                    {"combat_items": [e["name"] for e in entries]})
 
 
-# One player attack, from the dice tray. is_offhand picks the off-hand
-# swing; either way it costs the whole turn and the monster retaliates.
-def player_attack(is_offhand=False):
+# One player attack, from the dice tray: one round. A single d20 gates both
+# hands, and the monster retaliates once.
+def player_attack():
     p = gs["player"]
     e = gs["enemy"]
     # A Roll button can be pressed with nothing to fight - no enemy yet, or the
@@ -423,12 +423,9 @@ def player_attack(is_offhand=False):
     # None enemy, which used to 500.
     if not p or not e or not e.is_alive():
         return get_state()
-    if is_offhand and not has_offhand_weapon(p):
-        return combat_state()
 
     # The combat log accumulates: every exchange stays visible in the chat.
-    gs["log"].append(web_offhand_attack(p, e) if is_offhand
-                      else web_player_attack(p, e))
+    gs["log"].extend(web_player_attack(p, e))
 
     if not e.is_alive():
         return combat_reward("Victory!")
@@ -516,61 +513,57 @@ def combat_item_action(choice):
 
     return combat_item_state()
 
-# Player Attack
+# Player Attack. One d20 gates both hands: a hit lands the main-hand damage
+# AND the off-hand's half damage in the same round, a miss lands nothing.
 def web_player_attack(p, e):
     mod = weapon_mod(p, p.weapon)
     prof = prof_bonus(p)
     atk = roll("1d20") + prof + mod
+    off = has_offhand_weapon(p)
 
-    if atk >= e.ac:
-        heavy = two_handed_bonus(p.weapon)
-        if p.weapon:
-            dmg = max(roll(p.weapon.damage_dice) + mod + heavy, 1)
-        else:
-            dmg = max(1 + mod, 1)
-        # The weapon's damage type decides how hard this lands: skeletons
-        # crumble to bludgeoning, slimes shrug off steel.
-        type_name = damage_type(p.weapon.damage_type) if p.weapon else None
-        total, note = e.apply_damage(dmg, type_name)
-        effect = e.inflict_element(element_of(p.weapon), p)
-        gs["last_damage"] = {"amount": total, "kind": "hit",
-                                "weak": "WEAK" in note}
-        line = (f"You hit the {e.name} for {total} damage!{note} "
-                f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac})")
-        if heavy > 0:
-            line += f" +{heavy} two-handed"
-        return line + effect
-    gs["last_damage"] = None   # a miss shows no floating number
-    return f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
+    if atk < e.ac:
+        gs["last_damage"] = None   # a miss shows no floating number
+        return [f"You missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"]
 
-# Off-hand Attack
-def web_offhand_attack(p, e):
-    """The off-hand swing: its own hit roll, half damage.
+    heavy = two_handed_bonus(p.weapon)
+    if p.weapon:
+        dmg = max(roll(p.weapon.damage_dice) + mod + heavy, 1)
+    else:
+        dmg = max(1 + mod, 1)
+    # The weapon's damage type decides how hard this lands: skeletons
+    # crumble to bludgeoning, slimes shrug off steel.
+    type_name = damage_type(p.weapon.damage_type) if p.weapon else None
+    total, note = e.apply_damage(dmg, type_name)
+    effect = e.inflict_element(element_of(p.weapon), p)
+    weak = "WEAK" in note
+    line = (f"You hit the {e.name} for {total} damage!{note} "
+            f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac})")
+    if heavy > 0:
+        line += f" +{heavy} two-handed"
+    lines = [line + effect]
 
-    It is a whole turn of its own, so using it gives up the main-hand attack and
-    lets the monster retaliate.
-    """
-    w = p.offhand
-    mod = weapon_mod(p, w)
-    prof = prof_bonus(p)
-    atk = roll("1d20") + prof + mod
-
-    if atk >= e.ac:
+    # The off-hand rides the same roll - same to-hit, half damage - and only
+    # if the enemy is still standing after the main-hand hit (no overkill).
+    off_total = 0
+    if off and e.is_alive():
+        w = p.offhand
+        omod = weapon_mod(p, w)
         # Half of (dice + modifier), rounded down, never less than 1. The
         # two-handed bonus is deliberately absent - it cannot be held anyway.
-        full = max(roll(w.damage_dice) + mod, 1)
+        full = max(roll(w.damage_dice) + omod, 1)
         dmg = max(full // OFFHAND_DAMAGE_DIVISOR, 1)
         type_name = damage_type(w.damage_type)
-        total, note = e.apply_damage(dmg, type_name)
+        off_total, off_note = e.apply_damage(dmg, type_name)
         effect = e.inflict_element(element_of(w), p)
-        gs["last_damage"] = {"amount": total, "kind": "hit",
-                                "weak": "WEAK" in note}
-        return (f"Off-hand {w.name} hits the {e.name} for {total} damage!{note} "
-                f"(d20 + {prof} + {mod} = {atk} vs AC {e.ac}, half damage)"
-                + effect)
+        weak = weak or "WEAK" in off_note
+        # Deliberately no "= N vs AC" here: the dice land on the main line.
+        lines.append(f"Off-hand {w.name} follows for {off_total} damage!"
+                     f"{off_note} (same roll, half damage)" + effect)
 
-    gs["last_damage"] = None   # a miss shows no floating number
-    return f"Off-hand {w.name} missed! (d20 + {prof} + {mod} = {atk} vs AC {e.ac})"
+    gs["last_damage"] = {"amount": total, "kind": "hit",
+                            "weak": weak, "off": off_total}
+    return lines
+
 
 # Enemy Attack
 def web_enemy_attack(p, e):
@@ -1237,9 +1230,8 @@ def item_details():
 
 @app.route("/attack", methods=["POST"])
 def attack():
-    """One player attack, triggered by a Roll button in the dice tray."""
-    data = request.json or {}
-    return player_attack(bool(data.get("offhand")))
+    """One player attack (one round, both hands), from the dice tray Roll."""
+    return player_attack()
 
 @app.route("/map_data")
 def map_data():

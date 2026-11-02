@@ -378,7 +378,9 @@ header h1 {
     flex-wrap: wrap;
 }
 .dice-row:first-of-type { border-top: none; }
-.dice-row.offhand { background: rgba(160, 122, 30, 0.08); }
+/* Weapon in each hand: one roll, both hands - tinted so the row reads as
+   the whole round rather than as one of two swings. */
+.dice-row.dual { background: rgba(160, 122, 30, 0.08); }
 
 /* Perspective is what sells the tumble: the die spins in 3D rather than
    merely rotating flat, so it reads as an object and not a spinner. */
@@ -500,6 +502,9 @@ header h1 {
     animation: dmg-rise 1.25s ease-out forwards;
 }
 .dmg-float.weak { color: var(--gold); text-shadow: 0 1px 0 var(--parchment), 0 0 12px rgba(160, 122, 30, 0.6); }
+/* The off-hand's number, same roll: ink next to the main hand's rubric so the
+   two swings read apart without stealing the gold weakness flash. */
+.dmg-float.off-float { left: 128px; color: var(--ink); text-shadow: 0 1px 0 var(--parchment), 0 0 12px rgba(42, 37, 30, 0.4); animation-delay: 160ms; }
 @keyframes dmg-rise {
     0%   { opacity: 0; transform: translate(-50%, 6px) scale(0.7); }
     18%  { opacity: 1; transform: translate(-50%, -6px) scale(1.15); }
@@ -708,6 +713,7 @@ body.in-combat #log { flex: 1; max-height: none; min-height: 130px; }
     .monster { flex-direction: column; text-align: center; }
     .monster-art, .monster svg { width: 84px; height: 84px; }
     .dmg-float { left: 50%; }
+    .dmg-float.off-float { left: calc(50% + 56px); }
 }
 @media (min-width: 1100px) {
     #app { max-width: 1100px; }

@@ -126,10 +126,10 @@ function newGame(cls) {
     // The Longsword carries STR+1, so effective STR is 20 (+5). Max 1d8 (8)
     // + 5 + 1 two-handed = 14, and the Zombie is weak to slashing: 14 x 1.5
     // = 21. HP 22 -> 1.
-    g.call("playerAttack", false);
+    g.call("playerAttack");
     check("combat: weak hit lands for 21", g.eval("gs.enemy.hp"), 1);
     check("combat: floating damage number",
-        g.eval("gs.last_damage"), { amount: 21, kind: "hit", weak: true });
+        g.eval("gs.last_damage"), { amount: 21, kind: "hit", weak: true, off: 0 });
     check("combat: the log explains the weakness",
         g.eval("gs.log.join(' ')").indexOf("WEAK to slashing") !== -1, true);
     // The Zombie swings back: d20 max 20 + 2 beats AC 16; d6 max 6 + 1 = 7.
@@ -139,7 +139,7 @@ function newGame(cls) {
     // material drop needs random() < 0.75, so step down from RNG max first.
     g.setRandom(0.5);
     g.eval("gs.enemy.hp = 1");
-    g.call("playerAttack", false);
+    g.call("playerAttack");
     check("combat: victory clears the enemy", g.eval("gs.enemy"), null);
     check("combat: loots the gold drop", g.eval("gs.player.gold"), 8);
     check("combat: gains the XP reward", g.eval("gs.player.xp"), 35);
@@ -174,7 +174,7 @@ function newGame(cls) {
     g.eval("gs.enemy = new Enemy('Zombie', 1)");
     g.setRandom(0.5);                    // d20 reads 11 -> hits; 0.5 < 0.6 -> catch
 
-    g.call("playerAttack", false);
+    g.call("playerAttack");
     // The Ember Blade carries INT+1 (effective INT 20). The hit: 1d8 reads 5
     // +4 STR (the blade is no finesse weapon) = 9, fire is neutral on the
     // Zombie -> 22-9 = 13, then the burn ticks at the top of its turn: 1d4
@@ -196,7 +196,7 @@ function newGame(cls) {
     g.eval("gs.enemy = new Enemy('Zombie', 1)");
     g.setRandom(0.999999);               // hits, but 0.999999 >= 0.6 fails the rider
 
-    g.call("playerAttack", false);
+    g.call("playerAttack");
     check("fire: failing the chance roll leaves no burn",
         g.eval("gs.enemy.status.burn_rounds"), 0);
     check("fire: the log says so",
@@ -245,6 +245,51 @@ function newGame(cls) {
         g.eval("gs.player.inventory.some(i => i.name === 'Shield')"), true);
     check("two-handed: Greatsword carries its +1 bonus",
         g.eval("twoHandedBonus(gs.player.weapon)"), 1);
+}
+
+// --- dual wield: one roll, both hands, one retaliation ----------------------
+{
+    // A Dagger in each hand. Both carry DEX+1, so effective DEX is 21 (+5)
+    // and both hands are finesse weapons using it.
+    const g = newGame();
+    g.eval("gs.player.equip_weapon(createItem('Dagger'))");
+    g.eval("gs.player.equip_offhand(createItem('Dagger'))");
+    g.eval("gs.enemy = new Enemy('Zombie', 1)");
+    g.setRandom(0.999999);               // every roll at maximum
+
+    // One d20 gates both hands: 20 + 2 prof + 5 = 27 vs AC 8. Main hand:
+    // max 1d4 (4) + 5 = 9, piercing is WEAK on the Zombie -> 9 x 1.5 = 14
+    // (round half-up). Off-hand rides the same roll: full 4 + 5 = 9, halved
+    // -> 4, WEAK -> 6. Both land in one call: HP 22 -> 14 -> 2.
+    g.call("playerAttack");
+    check("dual: both hands land in one roll", g.eval("gs.enemy.hp"), 2);
+    check("dual: both numbers float",
+        g.eval("gs.last_damage"), { amount: 14, kind: "hit", weak: true, off: 6 });
+    check("dual: the off-hand line rides the same roll",
+        g.eval("gs.log.some(l => l.indexOf('Off-hand Dagger follows for 6 damage!') === 0" +
+            " && l.indexOf('same roll') !== -1)"), true);
+    check("dual: the log shows no second to-hit roll",
+        g.eval("gs.log.filter(l => l.indexOf('vs AC 8') !== -1).length"), 1);
+    // The monster retaliates ONCE: d20 max 20 + 2 beats AC, d6 max 6 + 1 = 7.
+    check("dual: one retaliation, not two", g.eval("gs.player.hp"), 12);
+    g.clearRandom();
+
+    // A miss lands nothing - neither hand, no floating number, and the
+    // Goblin's AC 15 stays out of reach of the minimum roll: 1 + 2 + 5 = 8.
+    const m = newGame();
+    m.eval("gs.player.equip_weapon(createItem('Dagger'))");
+    m.eval("gs.player.equip_offhand(createItem('Dagger'))");
+    m.eval("gs.enemy = new Enemy('Goblin', 1)");
+    m.setRandom(0.0);                    // every roll at minimum
+
+    m.call("playerAttack");
+    check("dual: a miss leaves both hands idle", m.eval("gs.enemy.hp"), 10);
+    check("dual: a miss floats nothing", m.eval("gs.last_damage"), null);
+    check("dual: no off-hand line on a miss",
+        m.eval("gs.log.some(l => l.indexOf('Off-hand') === 0)"), false);
+    // The Goblin swings back: d20 min 1 + 2 = 3 vs AC 16 - a miss.
+    check("dual: the monster still retaliates once", m.eval("gs.player.hp"), 19);
+    m.clearRandom();
 }
 
 // --- saving and loading round-trips the run --------------------------------
